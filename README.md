@@ -178,8 +178,15 @@ Dokumentasi interaktif: **http://localhost:8000/docs**
 
 ---
 
+## 📚 Dokumentasi lain
+
+- **[TESTING.md](TESTING.md)** — cara test backend API, pipeline, & frontend (Playwright via Docker)
+- **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** — kalau data tidak tampil (terutama saat deploy di server/VPS)
+- **[docs/hermes-integration.md](docs/hermes-integration.md)** — panduan integrasi Hermes Agent untuk AI Advisor (Tab 5)
+- **[CLAUDE.md](CLAUDE.md)** — detail teknis & gotchas untuk pengembangan
+
 ## 📝 Catatan
 
 - Data **delay ~15 menit**; saat market tutup, candle terakhir tidak berubah.
 - Universe ~949 emiten di-**auto-fetch** saat startup; sebagian emiten illikuid mungkin tanpa data intraday.
-- Detail teknis & gotchas untuk pengembangan ada di **`CLAUDE.md`**.
+- **Deploy di server:** buka port **3001** & **8000** di firewall/security group. yFinance bisa diblok dari IP VPS — lihat [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
