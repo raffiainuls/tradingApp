@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html, body {
+  background: #0a0e17;
+  color: #e2e8f5;
+  margin: 0;
+  padding: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+* { box-sizing: border-box; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #0a0e17; }
+::-webkit-scrollbar-thumb { background: #1f2940; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #2d3a5a; }
+
+@layer components {
+  .card {
+    @apply bg-panel border border-border rounded-lg;
+  }
+  .btn {
+    @apply px-3 py-1.5 rounded-md text-sm font-medium border border-border bg-panel2
+           text-dim hover:text-txt hover:border-accent transition-colors;
+  }
+  .btn-active {
+    @apply bg-accent/15 text-accent border-accent;
+  }
+  .input {
+    @apply bg-panel2 border border-border rounded-md px-3 py-1.5 text-sm text-txt
+           placeholder:text-dim focus:outline-none focus:border-accent w-full;
+  }
+  .label {
+    @apply text-xs text-dim uppercase tracking-wide;
+  }
+  .chip {
+    @apply text-[10px] px-1.5 py-0.5 rounded bg-panel2 border border-border text-dim;
+  }
+}
+
+.flash-up   { animation: flashUp 0.6s ease-out; }
+.flash-down { animation: flashDown 0.6s ease-out; }
+@keyframes flashUp   { 0% { background: rgba(22,199,132,0.25); } 100% { background: transparent; } }
+@keyframes flashDown { 0% { background: rgba(234,57,67,0.25); } 100% { background: transparent; } }
+
+/* Ticker tape marquee (footer Analyst) */
+.marquee { animation: marquee 45s linear infinite; will-change: transform; }
+@keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
