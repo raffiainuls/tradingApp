@@ -19,7 +19,7 @@ from kafka.errors import NoBrokersAvailable
 import config
 import db
 import realtime
-from routers import market, journal, watchlist
+from routers import market, journal, watchlist, screener, ai_picks, ai_advisor
 
 LIVE_TOPIC = "ohlc-live"
 
@@ -75,6 +75,7 @@ async def lifespan(app: FastAPI):
     try:
         db.init_pg_pool()
         db.ensure_watchlist_table()
+        db.ensure_ai_picks_table()
         print("[+] Postgres pool ready", flush=True)
     except Exception as e:
         print(f"[!] Postgres pool init failed: {e}", flush=True)
@@ -89,6 +90,9 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 app.include_router(market.router)
 app.include_router(journal.router)
 app.include_router(watchlist.router)
+app.include_router(screener.router)
+app.include_router(ai_picks.router)
+app.include_router(ai_advisor.router)
 
 
 @app.get("/health")

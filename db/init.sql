@@ -47,6 +47,26 @@ CREATE TABLE IF NOT EXISTS watchlist (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- AI Picks (Tab 3) — top-N bullish + reasoning LLM, level dari ATR
+CREATE TABLE IF NOT EXISTS ai_picks (
+    id            SERIAL PRIMARY KEY,
+    symbol        VARCHAR(20)   NOT NULL,
+    sector        VARCHAR(50),
+    verdict       VARCHAR(20)   NOT NULL,
+    score         INTEGER       NOT NULL,
+    rsi           NUMERIC(6,2),
+    macd_hist     NUMERIC(12,4),
+    adx           NUMERIC(6,2),
+    atr           NUMERIC(12,4),
+    close_price   NUMERIC(14,2) NOT NULL,
+    entry_price   NUMERIC(14,2) NOT NULL,
+    target_price  NUMERIC(14,2) NOT NULL,
+    cutloss_price NUMERIC(14,2) NOT NULL,
+    reasoning     TEXT,                    -- NULL kalau LLM tidak dikonfigurasi/gagal
+    batch_at      TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ai_picks_batch_at ON ai_picks(batch_at);
+
 -- Trigger: auto-update updated_at di positions
 CREATE OR REPLACE FUNCTION touch_updated_at() RETURNS TRIGGER AS $$
 BEGIN

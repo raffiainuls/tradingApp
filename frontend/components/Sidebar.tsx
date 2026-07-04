@@ -6,8 +6,8 @@ const NAV = [
   { href: "/journal", label: "Trading Journal", icon: "📓", n: 1, ready: true },
   { href: "/analyst", label: "Trading Analyst", icon: "📈", n: 2, ready: true },
   { href: "/watchlist", label: "Watchlist", icon: "⭐", n: 3, ready: true },
-  { href: "/screener", label: "Screener", icon: "🔎", n: 4, ready: false },
-  { href: "/advisor", label: "AI Advisor", icon: "🤖", n: 5, ready: false },
+  { href: "/screener", label: "Screener", icon: "🔎", n: 4, ready: true },
+  { href: "/advisor", label: "AI Advisor", icon: "🤖", n: 5, ready: true },
 ];
 
 export default function Sidebar() {

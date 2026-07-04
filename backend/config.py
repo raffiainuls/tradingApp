@@ -21,3 +21,30 @@ UNIVERSE_URL = os.environ.get(
     "UNIVERSE_URL",
     "https://raw.githubusercontent.com/wildangunawan/Dataset-Saham-IDX/master/List%20Emiten/all.csv",
 )
+
+# ── AI Picks (Tab 3) — generate MANUAL via tombol (tanpa auto/TTL) ──
+AI_PICKS_TOP_N     = int(os.environ.get("AI_PICKS_TOP_N", "15"))
+
+# ── LLM generik, provider-agnostic (OpenAI-compatible) ──
+# Kosongkan LLM_BASE_URL untuk menonaktifkan (AI Picks tetap jalan, rule-based only).
+# Arahkan ke Ollama/vLLM/LocalAI/LM Studio self-hosted, mis. http://host:11434/v1
+LLM_BASE_URL        = os.environ.get("LLM_BASE_URL", "").strip()   # kosong = nonaktif
+LLM_MODEL           = os.environ.get("LLM_MODEL", "llama3.1")
+LLM_API_KEY         = os.environ.get("LLM_API_KEY", "").strip()
+LLM_TIMEOUT_SECONDS = int(os.environ.get("LLM_TIMEOUT_SECONDS", "30"))
+# Batas token output. Reasoning model (mis. qwen/deepseek/glm) memakai sebagian budget
+# untuk "berpikir" → set longgar agar jawaban akhir tidak terpotong/kosong.
+LLM_MAX_TOKENS      = int(os.environ.get("LLM_MAX_TOKENS", "1500"))
+
+# ── AI Advisor (Tab 5) — Hermes Agent via bridge HTTP, generate MANUAL via tombol ──
+# Hermes (`bro_analysis`) hidup di HOST (luar Docker); backend (dalam container) tidak
+# bisa subprocess langsung ke situ. `scripts/hermes_advisor_bridge.py` dijalankan di
+# HOST, expose HTTP kecil yang di-subprocess-kan ke Hermes. Kosongkan/unreachable =
+# AI Advisor tetap tampilkan data teknikal (ClickHouse), cuma narasi AI yang absen.
+HERMES_BRIDGE_URL           = os.environ.get("HERMES_BRIDGE_URL", "http://host.docker.internal:8090").strip()
+HERMES_BRIDGE_TIMEOUT_SECONDS = int(os.environ.get("HERMES_BRIDGE_TIMEOUT_SECONDS", "150"))
+# Rekomendasi harian: Hermes SENDIRI yang menyeleksi (bukan cuma komentar) dari
+# POOL_SIZE kandidat skor tertinggi (belum difilter bullish) -> pilih maksimal
+# DAILY_TOP_N yang genuinely lolos kriteria (lihat ai_advisor.py).
+AI_ADVISOR_POOL_SIZE        = int(os.environ.get("AI_ADVISOR_POOL_SIZE", "50"))
+AI_ADVISOR_DAILY_TOP_N      = int(os.environ.get("AI_ADVISOR_DAILY_TOP_N", "8"))

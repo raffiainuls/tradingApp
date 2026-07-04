@@ -2,10 +2,12 @@
 
 > **Dokumen:** Cara koneksi Hermes Agent (`bro_analysis`) ke aplikasi trading IDX
 > **Profile:** `bro_analysis`
-> **Skills:** `stock-technical-fundamental-analysis`, `daily-stock-picks`
-> **Terintegrasi dengan:** Tab 3 AI Picks (LLM), Tab 5 AI Advisor (Hermes CLI)
+> **Skills:** `stock-technical-fundamental-analysis`, `daily-stock-picks` (referensi
+> pengetahuan; TIDAK dimuat via `--skills` di Tab 5 — lihat §9, alasan di §3.2 Mode B)
+> **Terintegrasi dengan:** Tab 3 AI Picks (LLM generik via HTTP), Tab 5 AI Advisor
+> (Hermes CLI via `scripts/hermes_advisor_bridge.py` — **sudah diimplementasikan**)
 > **Server:** Local / Self-hosted
-> **Update:** Juni 2026
+> **Update:** 2026-07-01 — Tab 5 AI Advisor selesai dibangun, lihat §9
 
 ---
 
@@ -99,10 +101,18 @@ Frontend tampilkan: chart + indikator + AI summary + rekomendasi
 
 #### Mode A — Analisis Langsung (tanpa LLM)
 
+> ⚠️ **Update 2026-07-01 (implementasi nyata Tab 5):** pseudocode `sys.path.append(...)`
+> di bawah ini **TIDAK JALAN** karena backend Trading App jalan di **Docker container**,
+> sedangkan skill Hermes ada di filesystem **HOST** — dua filesystem terpisah, `import`
+> lintas itu akan `ModuleNotFoundError`. Yang diimplementasikan: Tab 5 pakai
+> `backend/indicators.py` + ClickHouse **langsung** (data sudah ada, sudah jalan di
+> Tab 2/3/4, tidak butuh yfinance/Hermes sama sekali untuk angka teknikal). Snippet di
+> bawah tetap relevan **kalau** backend suatu saat tidak lagi di-Docker-kan.
+
 Panggil langsung fungsi Python dari skill Hermes untuk dapat data terstruktur:
 
 ```python
-# Di backend Python (FastAPI)
+# Di backend Python (FastAPI) -- HANYA valid kalau backend TIDAK di Docker
 import sys
 sys.path.append("/home/ubuntu/.hermes/profiles/bro_analysis/skills/research/stock-technical-fundamental-analysis/scripts")
 from analyze_stock import technical_analysis, fundamental_analysis
@@ -115,24 +125,33 @@ ta = technical_analysis(hist)
 
 #### Mode B — Full AI Advisor (dengan LLM)
 
-Kirim prompt ke Hermes untuk analisis naratif:
+> ⚠️ **Update 2026-07-01:** implementasi nyata **TIDAK** memuat `--skills`. Skill
+> `stock-technical-fundamental-analysis`/`daily-stock-picks` menginstruksikan agent
+> fetch data sendiri via `yf.Ticker(...).history()` begitu dimuat — persis yang mau
+> dihindari (IP server ini sering 429 dari Yahoo, lihat §10.4). Prompt yang dikirim ke
+> Hermes SUDAH menyertakan semua angka teknikal (dari ClickHouse), Hermes cuma diminta
+> menulis narasinya. Juga, backend (Docker) tidak bisa `subprocess` langsung ke
+> `bro_analysis` (ada di PATH **host**, bukan di container) — dijembatani lewat HTTP,
+> lihat `scripts/hermes_advisor_bridge.py` & §5.2b.
+
+Kirim prompt ke Hermes untuk analisis naratif (tanpa `--skills`, data inline di prompt):
 
 ```bash
-# Dari terminal
-bro_analysis --skills stock-technical-fundamental-analysis chat -q \
-  "Analisa BBCA.JK. Data: RSI 62, MACD bullish, ADX 28. \
-   Beri rekomendasi Hold/Sell beserta reasoning-nya."
+# Dari terminal (host, tempat bro_analysis ada di PATH)
+bro_analysis chat -q \
+  "Kamu analis teknikal saham IDX. JANGAN fetch data lain -- gunakan HANYA data ini:
+   BBCA, RSI 62, MACD bullish, ADX 28, skor 65 (STRONG BUY).
+   Beri analisa singkat & bias, akhiri disclaimer bukan saran investasi."
 ```
 
 ```python
-# Dari backend
+# Di scripts/hermes_advisor_bridge.py (HOST, bukan di dalam container backend)
 import subprocess
-result = subprocess.run([
-    "bro_analysis", "--skills",
-    "stock-technical-fundamental-analysis",
-    "chat", "-q", prompt_text
-], capture_output=True, text=True, timeout=120)
-ai_response = result.stdout
+result = subprocess.run(
+    ["bro_analysis", "chat", "-q", prompt_text],   # TANPA --skills
+    capture_output=True, text=True, timeout=150,
+)
+# stdout dibungkus box unicode (╭─ ⚕ Hermes ─...─╮), perlu di-parse -- lihat _extract_reply()
 ```
 
 ---
@@ -183,11 +202,26 @@ Akses:
 - Backend API: http://localhost:8000
 - API Docs: http://localhost:8000/docs
 
-### 5.2 Start Hermes API Server (opsional)
+### 5.2 Start Hermes API Server (opsional — utk §8, LLM_BASE_URL Tab 3)
 
 ```bash
 python3 /home/ubuntu/documents/analisa_api.py --port 8080 &
 ```
+
+### 5.2b Start Hermes Advisor Bridge (WAJIB utk Tab 5 AI Advisor)
+
+Beda dari 5.2 di atas — ini khusus Tab 5, ada di dalam repo (`scripts/`), subprocess
+`bro_analysis chat -q` (tanpa `--skills`), bukan `analyze_stock.py`/yfinance:
+
+```bash
+cd /home/ubuntu/tradingApp
+python3 scripts/hermes_advisor_bridge.py --port 8090 &
+```
+
+Tanpa ini jalan, Tab 5 tetap tampil (data teknikal dari ClickHouse via `/api/ai-advisor/*`),
+cuma narasi AI-nya kosong ("Narasi AI tidak tersedia"). Backend (Docker) menjangkau bridge
+ini via `http://host.docker.internal:8090` (env `HERMES_BRIDGE_URL`); `extra_hosts` sudah
+di-set di `docker-compose.yml` service `backend` supaya nama itu resolve dari container.
 
 ### 5.3 Stop Semua
 
@@ -195,8 +229,9 @@ python3 /home/ubuntu/documents/analisa_api.py --port 8080 &
 # Stop Docker app
 cd /home/ubuntu/tradingApp && sudo docker compose down
 
-# Stop Hermes API
+# Stop Hermes API (§5.2) & Advisor Bridge (§5.2b)
 pkill -f analisa_api.py
+pkill -f hermes_advisor_bridge.py
 ```
 
 ### 5.4 Melihat Log
@@ -361,43 +396,97 @@ curl http://localhost:8000/api/ai-picks
 
 ---
 
-## 9. Integrasi ke Tab 5 (AI Advisor)
+## 9. Integrasi ke Tab 5 (AI Advisor) — SUDAH DIIMPLEMENTASIKAN (2026-07-01)
 
-### 9.1 Perubahan yang Perlu Dibuat di Backend
+Rencana awal di bawah (sys.path import, fetch yfinance/saham-mcp) berubah setelah
+verifikasi empiris: real-time yfinance/saham-mcp 429 dari IP server ini, histori GitHub
+dataset saham-mcp beku sejak Feb 2025 (lebih basi dari ClickHouse sendiri), dan backend
+Docker tidak bisa akses `bro_analysis` (PATH host) langsung. Arsitektur final:
 
-Tambahkan file `backend/routers/ai_advisor.py`:
-
-```python
-from fastapi import APIRouter, Query
-import sys
-sys.path.append("/home/ubuntu/.hermes/profiles/bro_analysis/skills/research/stock-technical-fundamental-analysis/scripts")
-from analyze_stock import technical_analysis, fundamental_analysis
-
-router = APIRouter(prefix="/api", tags=["ai-advisor"])
-
-@router.get("/ai-analysis")
-def ai_analysis(symbol: str = Query(...), period: str = "1y"):
-    # 1. Ambil data dari ClickHouse (atau fallback ke yfinance)
-    # 2. Jalankan technical_analysis()
-    # 3. Jalankan fundamental_analysis()
-    # 4. (Optional) Kirim ke Hermes LLM untuk narasi
-    # 5. Return JSON
-    pass
+```
+Frontend (/advisor) ──POST──▶ backend/routers/ai_advisor.py (Docker)
+                                        │
+                         ┌──────────────┴───────────────┐
+                         ▼                               ▼
+              backend/indicators.py            backend/hermes_bridge.py
+              + ClickHouse (data teknikal,             │ HTTP POST /advise
+                sama seperti Tab 2/3/4)                 ▼
+                         │              scripts/hermes_advisor_bridge.py (HOST)
+                         │                       │ subprocess (TANPA --skills)
+                         │                       ▼
+                         │                 bro_analysis chat -q "<prompt+data>"
+                         ▼                       │
+                  gabung jadi 1 respons ◀─────────┘ (narasi teks, atau null kalau gagal)
 ```
 
-Daftarkan di `backend/main.py`:
+### 9.1 Backend
 
-```python
-from routers import ai_advisor
-app.include_router(ai_advisor.router)
-```
+- **`backend/ai_advisor.py`** — `analyze_symbol(symbol)`: `db.fetch_ohlcv` → `indicators.latest_signals`
+  → hitung entry/target/cutloss dari ATR (rumus sama persis dgn `ai_picks._levels`, sengaja
+  di-mirror bukan di-import lintas modul) → bangun prompt (data inline, larang fetch lain)
+  → `hermes_bridge.ask_hermes(prompt)`. `daily_recommendations(top_n)`: **Hermes sendiri yang
+  menyeleksi** (bukan cuma komentar, lihat §9.4) dari `_candidate_pool()` (top skor, verdict
+  apa pun, exclude Pemantauan Khusus) — 1 prompt berisi seluruh pool + kriteria seleksi →
+  Hermes putuskan sendiri mana yang lolos, parsing simbol pilihan via `_parse_picks()`.
+- **`backend/hermes_bridge.py`** — `ask_hermes(prompt) -> str | None`, httpx ke
+  `HERMES_BRIDGE_URL`, NEVER raise (pola sama dgn `llm_client.call_llm`).
+- **`backend/routers/ai_advisor.py`** — `POST /api/ai-advisor/analysis?symbol=`,
+  `POST /api/ai-advisor/daily-picks`. Sinkron (bukan BackgroundTasks) krn cuma 1 panggilan
+  Hermes per request, bukan batch — frontend tinggal tunggu dgn spinner.
+- **`scripts/hermes_advisor_bridge.py`** — HTTP stdlib-only di **HOST**, `POST /advise`
+  → `subprocess.run(["bro_analysis","chat","-q",prompt])` (TANPA `--skills`) → parse box
+  unicode output → `{"text": ...}`. Jalankan manual: `python3 scripts/hermes_advisor_bridge.py --port 8090 &`
+- **`docker-compose.yml`** — `extra_hosts: ["host.docker.internal:host-gateway"]` di
+  service `backend`, supaya container bisa `httpx.post("http://host.docker.internal:8090/advise")`.
 
-### 9.2 Perubahan di Frontend (Tab 5)
+### 9.2 Frontend
 
-File: `frontend/app/ai-advisor/page.tsx`
+File: `frontend/app/advisor/page.tsx` — form 1 simbol (baca `?symbol=` dari URL, konsisten
+dgn Analyst) + tombol "Analisa dengan AI" (panggil `POST /api/ai-advisor/analysis`), render
+pakai `TechnicalSummary` (component shared dgn Analyst, tipe `Signals`) + kartu entry/target/
+cutloss + blok narasi Hermes. Section kedua "Rekomendasi Hari Ini" — tombol
+`POST /api/ai-advisor/daily-picks` → grid kandidat **hasil seleksi Hermes** (reuse `VerdictBadge`)
++ 1 blok penjelasan lengkap Hermes (evaluasi tiap kandidat + kenapa yang lain tidak lolos).
 
-- Panggil `/api/ai-analysis?symbol=BBCA`
-- Tampilkan hasil dalam format: bias, ringkasan teknikal, ringkasan fundamental, rekomendasi
+### 9.3 Kenapa TIDAK ada tabel Postgres baru
+
+Hasil AI Advisor **ephemeral** (tidak disimpan) — beda dari AI Picks yang persist ke
+tabel `ai_picks` (utk konvergensi cross-tab + TTL). Tab 5 sinkron 1x per klik, tidak perlu
+riwayat; regenerate setiap kali user klik tombol.
+
+### 9.4 "Rekomendasi Hari Ini" — revisi desain (2026-07-01): Hermes SENDIRI memilih
+
+Desain awal (sebelum revisi ini) kirim top-N bullish yang **sudah kita filter** (sama
+persis logika `ai_picks._pick_candidates`) ke Hermes, minta 1 komentar naratif di atasnya.
+User menilai ini terlalu mirip AI Picks (Tab 3) — cuma beda satu prompt gabungan vs banyak
+prompt. Revisi: Hermes **benar-benar melakukan seleksi**, bukan sekadar menulis komentar.
+
+**Alur baru:**
+1. `_candidate_pool(AI_ADVISOR_POOL_SIZE)` — ambil top-skor **verdict apa pun** (BUKAN
+   pra-filter bullish), exclude papan Pemantauan Khusus (filter kualitas data, bukan
+   filter seleksi — itu tugas Hermes).
+2. Prompt berisi SELURUH pool + kriteria eksplisit dari skill `daily-stock-picks`
+   (Momentum Breakout: harga>SMA20 & RSI 50-70 & ADX>20 & MACD bullish; Oversold Bounce:
+   RSI<35 & dekat SMA200; Trend Continuation: harga>SMA50 & >SMA200 & ADX>25) — deskripsi
+   kriteria ditulis inline di prompt, BUKAN via `--skills` (tetap menghindari fetch yfinance).
+3. Instruksi: evaluasi SETIAP kandidat, pilih maksimal `AI_ADVISOR_DAILY_TOP_N` yang
+   genuinely lolos (**boleh 0 s.d. N, TIDAK dipaksa penuh** — kalau pool lemah semua,
+   Hermes boleh bilang tidak ada yang layak).
+4. Respons WAJIB diakhiri baris `PILIHAN: SIMBOL1,SIMBOL2,...` — di-parse oleh
+   `ai_advisor._parse_picks()` (regex ambil semua setelah `PILIHAN:`, per-token dibersihkan
+   dari karakter non-alfanumerik, lalu **divalidasi harus ada di pool** — token yang bukan
+   simbol pool/halusinasi dibuang diam-diam, tidak pernah dipercaya mentah-mentah).
+5. **Angka yang ditampilkan tetap 100% dari sistem** — `_parse_picks` mengembalikan objek
+   dari `pool` kita sendiri (bukan angka yang ditulis Hermes di teksnya), Hermes cuma
+   menentukan SIMBOL mana yang lolos. Prinsip "AI tidak boleh mengarang angka" (sama seperti
+   AI Picks Tab 3) tetap dipegang, hanya perannya diperluas dari "menulis" jadi "memilih".
+6. Fallback kalau parsing gagal / bridge tidak terjangkau: `pool[:max_picks]` (top-N pool
+   by score, deterministik) — UI tidak pernah blank.
+
+**Trade-off yang disadari & diterima:** latency naik (~30-50 detik vs ~10-20 detik
+sebelumnya, krn Hermes mengevaluasi 40-50 baris bukan cuma menulis komentar atas 8-10),
+dan hasil TIDAK 100% deterministik antar generate (sifat LLM) — beda dari AI Picks Tab 3
+yang selalu identik untuk data yang sama.
 
 ---
 

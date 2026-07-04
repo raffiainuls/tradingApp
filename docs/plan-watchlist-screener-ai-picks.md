@@ -1,6 +1,7 @@
 # Plan — Pisah Watchlist/Screener + AI Picks (Tab 3)
 
-> Status: **rencana, belum diimplementasi**. Tulisan ini dibuat sebelum coding dimulai, sesuai permintaan.
+> Status: **sudah diimplementasi** (2026-07-01). Watchlist (`/watchlist`) = manual + AI Picks;
+> Screener pindah ke `/screener` (Tab 4). Dokumen ini disimpan sebagai catatan desain.
 
 ## Context
 

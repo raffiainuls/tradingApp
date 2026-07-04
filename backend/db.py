@@ -101,6 +101,20 @@ def board_map() -> dict:
     return _board_map
 
 
+def latest_bar_date(interval: str) -> str | None:
+    """Tanggal bar terbaru di seluruh universe (transparansi freshness utk AI Advisor)."""
+    try:
+        rows = ch().query(
+            "SELECT max(ts) FROM market.ohlcv WHERE interval = {iv:String}",
+            parameters={"iv": interval},
+        ).result_rows
+        ts = rows[0][0] if rows else None
+        return str(ts.date()) if ts else None
+    except Exception as e:
+        print(f"[!] latest_bar_date error: {e}", flush=True)
+        return None
+
+
 def ensure_watchlist_table():
     """Buat tabel watchlist bila belum ada (idempoten, utk volume Postgres lama)."""
     with pg_cursor(commit=True) as cur:
@@ -112,6 +126,31 @@ def ensure_watchlist_table():
                 created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
             )
         """)
+
+
+def ensure_ai_picks_table():
+    """Buat tabel ai_picks bila belum ada (idempoten, utk volume Postgres lama)."""
+    with pg_cursor(commit=True) as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS ai_picks (
+                id            SERIAL PRIMARY KEY,
+                symbol        VARCHAR(20)   NOT NULL,
+                sector        VARCHAR(50),
+                verdict       VARCHAR(20)   NOT NULL,
+                score         INTEGER       NOT NULL,
+                rsi           NUMERIC(6,2),
+                macd_hist     NUMERIC(12,4),
+                adx           NUMERIC(6,2),
+                atr           NUMERIC(12,4),
+                close_price   NUMERIC(14,2) NOT NULL,
+                entry_price   NUMERIC(14,2) NOT NULL,
+                target_price  NUMERIC(14,2) NOT NULL,
+                cutloss_price NUMERIC(14,2) NOT NULL,
+                reasoning     TEXT,
+                batch_at      TIMESTAMPTZ   NOT NULL DEFAULT now()
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_ai_picks_batch_at ON ai_picks(batch_at)")
 
 
 def list_symbols() -> list[dict]:

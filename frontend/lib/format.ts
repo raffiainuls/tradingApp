@@ -44,3 +44,7 @@ export const fmtMoney = (n: number | null | undefined) => {
 
 export const colorOf = (n: number | null | undefined) =>
   n == null || n === 0 ? "text-dim" : n > 0 ? "text-up" : "text-down";
+
+export const scoreColor = (s: number) =>
+  s >= 50 ? "text-up" : s >= 20 ? "text-up/80" :
+  s <= -50 ? "text-down" : s <= -20 ? "text-down/80" : "text-dim";

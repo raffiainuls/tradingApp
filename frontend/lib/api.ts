@@ -1,6 +1,7 @@
 import type {
   HistoryResponse, SymbolInfo, Quote, Position, PortfolioSummary,
   Allocation, Transaction, Analytics, ScreenerResult, WatchlistItem, ScreenerPreset,
+  AiPick, AiPicksStatus, AiAdvisorAnalysis, AiAdvisorDailyPicks,
 } from "./types";
 
 // Alamat backend diturunkan saat RUNTIME dari host yang dipakai membuka frontend
@@ -80,4 +81,14 @@ export const api = {
   watchlist: () => get<{ watchlist: WatchlistItem[] }>("/api/watchlist"),
   addWatchlist: (body: { symbol: string; note?: string }) => send<WatchlistItem>("POST", "/api/watchlist", body),
   delWatchlist: (id: number) => send<void>("DELETE", `/api/watchlist/${id}`),
+
+  // ── AI Picks (Tab 3) ──
+  aiPicks: () => get<{ picks: AiPick[] }>("/api/ai-picks"),
+  aiPicksStatus: () => get<AiPicksStatus>("/api/ai-picks/status"),
+  generateAiPicks: () => send<{ started: boolean }>("POST", "/api/ai-picks/generate"),
+
+  // ── AI Advisor (Tab 5) ──
+  aiAdvisorAnalysis: (symbol: string) =>
+    send<AiAdvisorAnalysis>("POST", `/api/ai-advisor/analysis?symbol=${encodeURIComponent(symbol)}`),
+  aiAdvisorDailyPicks: () => send<AiAdvisorDailyPicks>("POST", "/api/ai-advisor/daily-picks"),
 };

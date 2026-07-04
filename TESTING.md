@@ -21,8 +21,9 @@ curl -s "http://localhost:8000/api/quotes?interval=1d" | grep -o '"symbol"' | wc
 # history + indikator + signals 1 emiten
 curl -s "http://localhost:8000/api/history/BBCA?interval=1d" | head -c 300
 
-# screener (daily picks)
+# screener (daily picks) — Tab 4
 curl -s "http://localhost:8000/api/screener?min_score=50&above_ma200=true&limit=5"
+curl -s "http://localhost:8000/api/screener/presets"
 
 # journal
 curl -s "http://localhost:8000/api/journal/positions"  | head -c 200
@@ -30,6 +31,24 @@ curl -s "http://localhost:8000/api/journal/analytics"  | head -c 200
 
 # watchlist
 curl -s "http://localhost:8000/api/watchlist"
+
+# AI Picks (Tab 3) — generate MANUAL (GET read-only, tidak memicu generate)
+curl -s -w "\n%{time_total}s\n" -o /dev/null "http://localhost:8000/api/ai-picks"  # read-only, cepat
+curl -s "http://localhost:8000/api/ai-picks/status"                # {"generating":..,"last_generated_at":..}
+curl -s -X POST "http://localhost:8000/api/ai-picks/generate"      # {"started":true} — satu-satunya pemicu
+# poll status s/d generating:false, lalu:
+curl -s "http://localhost:8000/api/ai-picks" | head -c 400         # picks[]; tanpa LLM → reasoning:null
+
+# AI Advisor (Tab 5) — sinkron, satu kali panggilan Hermes per request
+curl -s http://localhost:8090/health                                # bridge Hermes di HOST (opsional, jalankan dulu:
+                                                                      # python3 scripts/hermes_advisor_bridge.py --port 8090 &)
+curl -s -X POST "http://localhost:8000/api/ai-advisor/analysis?symbol=BBCA" | head -c 500
+# tanpa bridge jalan -> ai_narrative:null, technical tetap terisi (bukan error)
+
+# daily-picks: Hermes SENDIRI menyeleksi dari pool (bisa ~30-50 detik, evaluasi 40-50 kandidat)
+curl -s -X POST "http://localhost:8000/api/ai-advisor/daily-picks" | python3 -m json.tool
+# candidates[] = hasil PARSING baris "PILIHAN: SYM1,SYM2,.." dari ai_commentary, tervalidasi
+# terhadap pool (bukan comot mentah dari teks AI). Tanpa bridge -> fallback top-N pool by score.
 ```
 
 Dokumentasi interaktif (klik & coba): **http://localhost:8000/docs**
@@ -131,10 +150,38 @@ API saat menguji dari mesin lain, lihat trik `page.route` di repo (opsional).
 - [ ] Tambah transaksi BUY lalu SELL → tab Analisis: win rate, equity curve, dll terisi
 - [ ] Edit/hapus posisi & transaksi
 
-**Tab 3 — Watchlist** (`/watchlist`)
+**Tab 3 — Watchlist + AI Picks** (`/watchlist`)
+- [ ] Tambah/hapus watchlist manual; klik kode → ke Analyst (chart emiten itu)
+- [ ] Section **AI Picks**: ≤15 kartu (simbol, badge verdict, skor, entry/target/cutloss)
+- [ ] Tanpa `LLM_BASE_URL` → tiap kartu tampil italic "Reasoning AI tidak tersedia" (tanpa error console)
+- [ ] **Buka halaman TIDAK memicu generate** (hanya tampil batch terakhir; tidak ada call LLM)
+- [ ] Tombol **🤖 Generate AI Picks** → status "Sedang generate…" lalu kartu muncul otomatis (polling)
+- [ ] Tiap kartu: `target > entry > cutloss`; ★ tambah ke watchlist
+- [ ] Screener **sudah tidak ada** di halaman ini (pindah ke Tab 4)
+
+**Tab 4 — Screener** (`/screener`)
+- [ ] Sidebar "Screener" bisa diklik (bukan chip "soon")
 - [ ] Preset (Strong Buy, Oversold, dst) → tabel hasil berubah
 - [ ] Filter (min skor / RSI / Vol× / >MA200) → Terapkan
 - [ ] ★ tambah ke watchlist; klik kode → ke Analyst (chart emiten itu)
+
+**Tab 5 — AI Advisor** (`/advisor`)
+- [ ] Sidebar "AI Advisor" bisa diklik (bukan chip "soon")
+- [ ] Input kode saham + klik "Analisa dengan AI" → panel teknikal (verdict/skor/RSI/MACD/dll,
+      via `TechnicalSummary`) + kartu entry/target/cutloss + "Data per [tanggal]" tampil
+- [ ] **Tanpa bridge Hermes jalan** → data teknikal tetap tampil, narasi AI italic
+      "Narasi AI tidak tersedia" (tanpa error console)
+- [ ] **Dengan bridge jalan** (`python3 scripts/hermes_advisor_bridge.py --port 8090 &`) →
+      narasi Bahasa Indonesia muncul (bisa ~10-90 detik, tombol nonaktif selama proses)
+- [ ] Simbol tidak ada data → pesan error jelas (bukan crash/blank)
+- [ ] Klik "🤖 Generate Rekomendasi" → grid kandidat **hasil seleksi Hermes** (VerdictBadge +
+      skor, bukan sekadar top-N bullish kita) + blok penjelasan lengkap (evaluasi tiap kandidat
+      + kenapa yang lain tidak lolos) — bisa ~30-50 detik krn Hermes evaluasi seluruh pool
+- [ ] **Tanpa bridge** → fallback ke top-N pool by score (deterministik), `ai_commentary` kosong
+- [ ] Jumlah kartu hasil **bisa kurang dari `AI_ADVISOR_DAILY_TOP_N`** (Hermes boleh bilang
+      sebagian tidak layak, tidak dipaksa penuh) — bukan bug kalau kartu < batas atas
+- [ ] Buka halaman **tidak** otomatis memanggil AI (harus klik tombol dulu)
+- [ ] Buka `/advisor?symbol=BBCA` dari link lain → input ter-prefill "BBCA"
 
 ---
 

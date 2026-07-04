@@ -139,6 +139,8 @@ services:
       - "8000:8000"
     env_file: .env
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # AI Advisor (Tab 5): akses Hermes bridge di HOST
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
       interval: 15s
