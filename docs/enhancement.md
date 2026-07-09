@@ -150,7 +150,8 @@ sebelumnya juga awalnya terlihat meyakinkan tapi datanya ternyata beku & real-ti
 
 ### Status uji coba langsung — NeaByteLab/IDX-API (2026-07-04)
 
-**Kesimpulan: BLOCKED di tahap setup, belum sempat sampai tes endpoint IDX-nya sama sekali.**
+**Kesimpulan akhir: TIDAK BISA dipakai dari server ini — endpoint IDX-nya sendiri diblokir
+Cloudflare, dikonfirmasi sampai level HTTP request/response mentah.**
 
 Langkah yang sudah dilakukan:
 1. Install Deno 2.9.1 (berhasil).
@@ -158,26 +159,31 @@ Langkah yang sudah dilakukan:
 3. Baca source code `src/Trading/index.ts::getBrokerSummary()` — **terkonfirmasi** memanggil
    endpoint internal resmi IDX: `https://www.idx.co.id/primary/TradingSummary/GetBrokerSummary`
    (bukan scraping HTML, benar seperti klaim). Ada handshake session dulu (visit `idx.co.id/id`
-   ambil cookie, browser headers lengkap) sebelum request data — pendekatan yang masuk akal
-   utk menghindari blokir sederhana.
-4. Coba jalankan test script (`deno run` import `TradingModule` langsung) → **macet total di
-   tahap download dependency**, bukan di endpoint IDX-nya.
+   ambil cookie) sebelum request data.
+4. **Blocker #1 (terpecahkan):** `deno cache`/`deno run` macet total karena `"lock": true` di
+   `deno.json` bikin Deno coba resolve SELURUH `imports` map project (termasuk `@db/sqlite` dari
+   JSR yang ternyata **tidak dipakai sama sekali** di source code — database asli pakai
+   `@libsql/client`+`drizzle-orm/libsql`, keduanya dari npm). `jsr.io` 403 total dari IP ini
+   (dicek `curl -sI https://jsr.io/` → 403 di halaman utama). **Solusi:** jalankan dengan flag
+   `deno run --no-lock` → lolos, npm packages ke-resolve normal lewat mirror Tencent.
+5. **Blocker #2 (tidak bisa dipecahkan dari server ini):** setelah lolos JSR, jalankan tes
+   diagnostik HTTP mentah langsung ke 3 tahap alur `ensureSession()` → `GetBrokerSummary()`:
+   - `GET idx.co.id/id` (ambil cookie) → **403**
+   - `GET idx.co.id/primary/home/GetIndexList` (validasi session) → **403**
+   - `GET idx.co.id/primary/TradingSummary/GetBrokerSummary?...` (data asli) → **403**
 
-**Akar masalah:** `jsr.io` (registry paket Deno resmi) **403 total** dari IP server ini
-(`curl -sI https://jsr.io/` → 403, bahkan di halaman utama, bukan cuma path package) — pola
-identik dgn Yahoo/IDX/Cloudflare yang sudah berkali-kali ditemui di proyek ini. Dependency
-`@db/sqlite` (dipakai buat database lokal) **cuma tersedia di JSR**, tidak ada mirror npm/GitHub
-yang berhasil ditemukan (`@jsr/db__sqlite` di npm registry & npmmirror.com sama-sama 404, repo
-`denoland/deno_sqlite` di GitHub juga 404 — kemungkinan nama package tsb sudah dipindah/beda).
-Dependency npm lain (`drizzle-kit`, `@libsql/client`) berhasil di-download normal lewat mirror
-Tencent — jadi masalahnya spesifik ke JSR, bukan jaringan secara umum.
+   Ketiganya mengembalikan halaman Cloudflare **"Just a moment..."** (JS challenge page,
+   `challenges.cloudflare.com` di CSP) — bukan simple IP block, tapi bot-challenge penuh yang
+   butuh eksekusi JS browser sungguhan utk lolos. Ini terjadi di request PERTAMA (baru mau ambil
+   cookie), jadi tidak ada cara akal-akalan header/cookie yang bisa menembusnya dari sini.
 
-**Implikasi:** belum bisa disimpulkan apakah endpoint `GetBrokerSummary` IDX sendiri akan kena
-403/429 atau tidak dari IP ini — proses gagal SEBELUM sampai ke situ. Untuk lanjut, opsi:
-(a) coba jalankan dari jaringan lain (residential/rumah) yang tidak diblokir JSR, generate
-`deno.lock` + cache dependency di sana, lalu pindahkan ke server ini; (b) cari cara vendor
-`@db/sqlite` secara manual tanpa lewat JSR (belum diriset); (c) skip proyek ini, coba kandidat
-lain yang tidak bergantung ke JSR.
+**Kesimpulan:** klaim teknis proyek ini 100% benar (API resmi IDX, bukan scraping, kode bersih,
+MIT license) — masalahnya murni di reputasi IP server ini (AS132203 Tencent Cloud Singapore),
+sama seperti Yahoo/jsr.io/claude.ai sebelumnya. Kemungkinan besar **akan jalan normal** kalau
+dicoba dari IP residential (rumah/laptop) — sesuai pola yang sudah berulang kali ditemukan di
+proyek ini. Opsi: (a) coba dari jaringan rumah lalu proxy/kirim hasilnya ke server ini, (b) skip
+dulu, pertimbangkan kandidat berbayar (Sectors.app/GOAPI.IO) yang mungkin punya infra sendiri
+yang tidak kena blokir yang sama.
 
 ---
 

@@ -251,6 +251,7 @@ Dokumentasi interaktif: **http://localhost:8000/docs**
 
 ## 📚 Dokumentasi lain
 
+- **[docs/prd-tradingApp.md](docs/prd-tradingApp.md)** — PRD v2.0 (as-built): fitur per tab, decision log, backlog & open questions
 - **[TESTING.md](TESTING.md)** — cara test backend API, pipeline, & frontend (Playwright via Docker)
 - **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** — kalau data tidak tampil (terutama saat deploy di server/VPS)
 - **[docs/hermes-integration.md](docs/hermes-integration.md)** — panduan integrasi Hermes Agent untuk AI Advisor (Tab 5)

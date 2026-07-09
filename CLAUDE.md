@@ -4,7 +4,7 @@ Panduan untuk Claude Code saat bekerja di project ini.
 
 ## Gambaran
 
-Aplikasi web personal untuk trading saham IDX. Mengikuti `prd-tradingApp.md`.
+Aplikasi web personal untuk trading saham IDX. Mengikuti `docs/prd-tradingApp.md` (v2.0 as-built).
 Status saat ini: **Tab 1 (Journal), Tab 2 (Analyst), Tab 3 (Watchlist + AI Picks), Tab 4 (Screener), Tab 5 (AI Advisor)** sudah dibangun.
 Tab 3 = watchlist manual + **AI Picks** (top-15 bullish dari mesin skoring; reasoning LLM batch via HTTP OpenAI-compatible; level entry/target/cutloss deterministik dari ATR). Tab 4 = screener/daily-picks rule-based (backend/screener.py: skor komposit 949 emiten dari ClickHouse, cached 5m; preset + filter; buang papan "Pemantauan Khusus" via board_map dari all.csv). Tab 5 = **AI Advisor** — analisa single-stock + rekomendasi harian via **Hermes Agent** (`bro_analysis`), data teknikal 100% dari ClickHouse kita sendiri (BUKAN yfinance/MCP — lihat gotcha di bawah kenapa).
 **Lapisan AI Picks (Tab 3) provider-agnostic**: HTTP OpenAI-compatible `LLM_BASE_URL`/`LLM_MODEL` → Ollama/vLLM/LocalAI self-hosted (BUKAN Claude API krn biaya). `LLM_BASE_URL` kosong (default) = no-op instan, AI Picks tetap jalan rule-based tanpa reasoning.
