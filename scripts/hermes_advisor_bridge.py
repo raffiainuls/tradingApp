@@ -11,8 +11,14 @@ Usage:
     python3 scripts/hermes_advisor_bridge.py --port 9090
 
 Endpoints:
-    GET  /health          Health check
+    GET  /health          Health check (tanpa auth)
     POST /advise           {"prompt": "..."} -> {"text": "..."} atau {"error": "..."}
+
+Auth: set env var HERMES_BRIDGE_API_KEY di host sebelum menjalankan bridge, maka
+POST /advise WAJIB menyertakan header `Authorization: Bearer <key>`. WAJIB di-set
+kalau port 8090 bisa diakses dari luar mesin ini (mis. app jalan di laptop, Hermes
+tetap di VPS — lihat docs/hermes-server-migration.md). Kosong = tanpa auth, hanya
+aman untuk topologi lama (app & bridge di mesin yang sama).
 
 Catatan penting: prompt yang dikirim ke sini SENGAJA tidak memuat --skills Hermes
 (stock-technical-fundamental-analysis / daily-stock-picks) karena skill itu akan
@@ -20,7 +26,9 @@ membuat Hermes coba fetch data sendiri lewat yfinance -- yang di server ini seri
 kena rate-limit 429. Data teknikal HARUS sudah dihitung & disertakan di dalam prompt
 oleh backend (dari ClickHouse), Hermes di sini HANYA dipakai untuk menulis narasinya.
 """
+import hmac
 import json
+import os
 import re
 import subprocess
 import sys
@@ -29,6 +37,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 
 HERMES_BIN = "bro_analysis"
 DEFAULT_TIMEOUT = 150  # detik; longgar krn ada overhead init agent + LLM call
+API_KEY = os.environ.get("HERMES_BRIDGE_API_KEY", "").strip()
 
 _BOX_RE = re.compile(r"^╭[^\n]*\n(.*?)\n╰", re.DOTALL | re.MULTILINE)
 
@@ -72,9 +81,17 @@ class BridgeHandler(BaseHTTPRequestHandler):
             return self._json({"status": "ok", "server": "Hermes Advisor Bridge"})
         self._json({"error": "Not found. Try GET /health or POST /advise"}, 404)
 
+    def _authorized(self) -> bool:
+        if not API_KEY:
+            return True   # auth nonaktif (topologi lama: bridge & app di mesin sama)
+        auth = self.headers.get("Authorization", "")
+        return hmac.compare_digest(auth, f"Bearer {API_KEY}")
+
     def do_POST(self):
         if self.path.rstrip("/") != "/advise":
             return self._json({"error": "Not found. Try POST /advise"}, 404)
+        if not self._authorized():
+            return self._json({"error": "unauthorized: header 'Authorization: Bearer <HERMES_BRIDGE_API_KEY>' salah/tidak ada"}, 401)
         try:
             length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length) or b"{}")
@@ -99,7 +116,7 @@ class BridgeHandler(BaseHTTPRequestHandler):
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
     def _json(self, data, status=200):
         self.send_response(status)
@@ -121,6 +138,12 @@ def main():
     print(f"🚀 Hermes Advisor Bridge @ http://{args.host}:{args.port}", flush=True)
     print(f"   GET  /health", flush=True)
     print(f"   POST /advise   body: {{\"prompt\": \"...\"}}", flush=True)
+    if API_KEY:
+        print(f"   🔒 Auth aktif: POST /advise butuh header 'Authorization: Bearer <HERMES_BRIDGE_API_KEY>'", flush=True)
+    else:
+        print(f"   ⚠️  HERMES_BRIDGE_API_KEY tidak di-set — /advise TANPA auth. Hanya aman bila", flush=True)
+        print(f"      port {args.port} tidak terjangkau dari luar mesin ini (jangan begini kalau", flush=True)
+        print(f"      app jalan di mesin lain — lihat docs/hermes-server-migration.md).", flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

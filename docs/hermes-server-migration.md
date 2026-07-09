@@ -1,7 +1,10 @@
 # Migrasi App ke Laptop, Hermes Tetap di Server — Rencana Integrasi (2026-07-04)
 
-> Status: **rencana/ide, belum diimplementasi**. Ditulis dari diskusi soal mengatasi 429 Yahoo
-> Finance dengan memindahkan app ke IP residential, sementara Hermes Agent tetap di server ini.
+> Status: **perubahan sisi kode repo SUDAH diimplementasi (2026-07-09, dikerjakan di laptop)**.
+> Sisa pekerjaan: langkah operasional di server VPS (Tailscale/API key/jalankan bridge) dan
+> pengisian `.env` di laptop — lihat checklist di bawah. Ditulis dari diskusi soal mengatasi
+> 429 Yahoo Finance dengan memindahkan app ke IP residential, sementara Hermes Agent tetap
+> di server VPS.
 
 ## Konteks & Tujuan
 
@@ -73,7 +76,7 @@ depth):
 
 ---
 
-## Checklist Perubahan Konkret (belum dikerjakan)
+## Checklist Perubahan Konkret
 
 **Di server VPS ini (tempat Hermes & bridge tetap jalan):**
 - [ ] Install & konfigurasi Tailscale (atau siapkan API key + buka port 8090 di security group
@@ -82,19 +85,23 @@ depth):
 - [ ] Jalankan bridge dgn `--host 0.0.0.0` (sudah default) supaya listen ke semua interface,
       termasuk Tailscale interface.
 
-**Di kode repo (bisa disiapkan sebelum migrasi, tidak tergantung lokasi server):**
-- [ ] Tambah pengecekan `Authorization` header di `scripts/hermes_advisor_bridge.py`.
-- [ ] Tambah `HERMES_BRIDGE_API_KEY` ke `backend/config.py`, dikirim di header oleh
-      `backend/hermes_bridge.py`.
-- [ ] Update `.env.example` dgn `HERMES_BRIDGE_API_KEY=`.
-- [ ] Update `docker-compose.yml`: `extra_hosts: host.docker.internal:host-gateway` jadi tidak
-      relevan lagi (khusus akses ke mesin sendiri) — boleh dihapus, tapi kalau dibiarkan juga
-      tidak mengganggu apa pun.
+**Di kode repo (SELESAI 2026-07-09):**
+- [x] Tambah pengecekan `Authorization: Bearer <key>` di `scripts/hermes_advisor_bridge.py`
+      (`/advise` saja; `/health` tetap tanpa auth; `hmac.compare_digest`; env
+      `HERMES_BRIDGE_API_KEY` kosong = auth nonaktif → backward-compatible topologi lama,
+      dengan warning saat startup).
+- [x] Tambah `HERMES_BRIDGE_API_KEY` ke `backend/config.py`, dikirim di header oleh
+      `backend/hermes_bridge.py` (header hanya dikirim bila key non-kosong).
+- [x] Update `.env.example` dgn `HERMES_BRIDGE_API_KEY=` + dokumentasi dua topologi.
+- [x] `docker-compose.yml`: `extra_hosts` DIBIARKAN (tidak mengganggu; masih dipakai bila
+      suatu saat balik ke topologi satu-mesin), komentarnya diperjelas.
 
-**Di laptop (saat migrasi beneran dilakukan):**
-- [ ] Clone repo, `cp .env.example .env`.
-- [ ] Isi `HERMES_BRIDGE_URL` = IP Tailscale (atau IP publik) VPS ini, port 8090.
-- [ ] Isi `HERMES_BRIDGE_API_KEY` = sama dgn yang di-set di server VPS.
+**Di laptop:**
+- [x] Clone repo (sudah ada di `d:\project\tradingApp`); `.env` lama dilengkapi section
+      AI Picks/LLM + AI Advisor (2026-07-09).
+- [ ] Isi `HERMES_BRIDGE_URL` di `.env` = `http://<IP Tailscale atau publik VPS>:8090`
+      (sekarang sengaja dikosongkan → Tab 5 jalan tanpa narasi AI sampai diisi).
+- [ ] Isi `HERMES_BRIDGE_API_KEY` di `.env` = sama dgn yang di-set di server VPS.
 - [ ] `docker compose up -d --build` seperti biasa.
 
 ---

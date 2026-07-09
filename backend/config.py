@@ -43,6 +43,11 @@ LLM_MAX_TOKENS      = int(os.environ.get("LLM_MAX_TOKENS", "1500"))
 # AI Advisor tetap tampilkan data teknikal (ClickHouse), cuma narasi AI yang absen.
 HERMES_BRIDGE_URL           = os.environ.get("HERMES_BRIDGE_URL", "http://host.docker.internal:8090").strip()
 HERMES_BRIDGE_TIMEOUT_SECONDS = int(os.environ.get("HERMES_BRIDGE_TIMEOUT_SECONDS", "150"))
+# API key bridge — WAJIB saat bridge diakses lintas mesin (app di laptop, Hermes tetap
+# di VPS; lihat docs/hermes-server-migration.md). Isinya harus sama dengan env var
+# HERMES_BRIDGE_API_KEY di mesin tempat bridge jalan. Kosong = header tidak dikirim
+# (hanya cocok untuk topologi lama: bridge di host yang sama, tanpa auth).
+HERMES_BRIDGE_API_KEY       = os.environ.get("HERMES_BRIDGE_API_KEY", "").strip()
 # Rekomendasi harian: Hermes SENDIRI yang menyeleksi (bukan cuma komentar) dari
 # POOL_SIZE kandidat skor tertinggi (belum difilter bullish) -> pilih maksimal
 # DAILY_TOP_N yang genuinely lolos kriteria (lihat ai_advisor.py).

@@ -140,7 +140,10 @@ services:
     env_file: .env
     restart: unless-stopped
     extra_hosts:
-      - "host.docker.internal:host-gateway"   # AI Advisor (Tab 5): akses Hermes bridge di HOST
+      # AI Advisor (Tab 5): hanya dipakai bila Hermes bridge jalan di HOST yang sama
+      # (HERMES_BRIDGE_URL=http://host.docker.internal:8090). Tidak relevan bila bridge
+      # di mesin lain (docs/hermes-server-migration.md), tapi dibiarkan pun tak mengganggu.
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
       interval: 15s

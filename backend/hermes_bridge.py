@@ -11,10 +11,14 @@ import config
 
 
 def ask_hermes(prompt: str) -> str | None:
+    headers = {}
+    if config.HERMES_BRIDGE_API_KEY:
+        headers["Authorization"] = f"Bearer {config.HERMES_BRIDGE_API_KEY}"
     try:
         resp = httpx.post(
             f"{config.HERMES_BRIDGE_URL.rstrip('/')}/advise",
             json={"prompt": prompt, "timeout": config.HERMES_BRIDGE_TIMEOUT_SECONDS},
+            headers=headers,
             timeout=config.HERMES_BRIDGE_TIMEOUT_SECONDS + 10,
         )
         resp.raise_for_status()
