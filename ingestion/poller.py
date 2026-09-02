@@ -10,6 +10,7 @@ Alur: Yahoo Finance → (poller ini, TCP server) → tcp-bridge → Kafka → Cl
 - Dedup via last_ts agar pass berikutnya hanya kirim bar baru.
 - Re-backfill penuh berkala / saat client baru connect (self-heal; idempoten di ClickHouse).
 """
+import logging
 import os
 import socket
 import threading
@@ -27,6 +28,49 @@ CHUNK_SIZE      = int(os.environ.get("CHUNK_SIZE", "60"))
 REBACKFILL_HOURS = float(os.environ.get("REBACKFILL_HOURS", "6"))
 MAX_SYMBOLS     = int(os.environ.get("MAX_SYMBOLS", "0"))  # 0 = semua
 CHART_INTERVALS = [s.strip() for s in os.environ.get("CHART_INTERVALS", "5m,15m,1h,1d,1wk").split(",") if s.strip()]
+
+# ── Proteksi rate-limit Yahoo (HTTP 429 "Edge: Too Many Requests") ───────────
+# Ini rate-limit murni berbasis volume request per-IP (bukan bot-challenge ala
+# Cloudflare) — TIDAK bisa dilewati pakai browser/fingerprint trick, satu-satunya
+# tuas yang ada di kode adalah: kurangi burst & mundur teratur begitu kedeteksi.
+YF_THREADS            = int(os.environ.get("YF_THREADS", "5"))        # concurrency per chunk (dulu default True = sebesar CHUNK_SIZE)
+CHUNK_DELAY_SECONDS   = float(os.environ.get("CHUNK_DELAY_SECONDS", "2"))     # jeda antar chunk saat normal
+RATE_LIMIT_BACKOFF_SECONDS  = float(os.environ.get("RATE_LIMIT_BACKOFF_SECONDS", "60"))   # backoff dasar per hit 429 (dobel tiap hit berturut-turut, cap 5 menit)
+RATE_LIMIT_MAX_CONSECUTIVE = int(os.environ.get("RATE_LIMIT_MAX_CONSECUTIVE", "3"))       # abort pass ini kalau 429 beruntun sebanyak ini
+RATE_LIMIT_COOLDOWN_SECONDS = float(os.environ.get("RATE_LIMIT_COOLDOWN_SECONDS", "900")) # jeda sebelum pass berikutnya kalau pass ini di-abort krn 429
+
+
+def _is_rate_limited(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return (
+        type(exc).__name__ == "YFRateLimitError"
+        or "rate limit" in msg
+        or "too many requests" in msg
+    )
+
+
+class _RateLimitLogWatcher(logging.Handler):
+    """yf.download() multi-ticker TIDAK raise exception per-ticker ke caller —
+    kegagalan cuma di-log via logger 'yfinance' ('N Failed downloads: ... Rate
+    limited ...') lalu ditelan diam-diam (DataFrame kosong/partial). Satu-satunya
+    cara detect 429 di kasus ini adalah nguping log itu."""
+
+    def __init__(self):
+        super().__init__(level=logging.ERROR)
+        self.hit = False
+
+    def emit(self, record):
+        try:
+            msg = record.getMessage().lower()
+        except Exception:
+            return
+        if "rate limit" in msg or "too many requests" in msg:
+            self.hit = True
+
+
+_rate_limit_watcher = _RateLimitLogWatcher()
+logging.getLogger("yfinance").addHandler(_rate_limit_watcher)
+
 
 clients = []
 clients_lock = threading.Lock()
@@ -76,19 +120,24 @@ def _clean(v):
 
 
 def stream_chunk(instruments_chunk, interval, full):
-    """Download 1 chunk untuk 1 interval, broadcast bar (baru / semua jika full)."""
+    """Download 1 chunk untuk 1 interval, broadcast bar (baru / semua jika full).
+    Return (jumlah_bar_terkirim, kena_rate_limit: bool)."""
     by_ticker = {yfsym: (code, ctype, sector) for yfsym, code, ctype, sector in instruments_chunk}
     tickers = list(by_ticker.keys())
     period = INTERVAL_PERIOD.get(interval, "1mo")
 
+    _rate_limit_watcher.hit = False
     try:
         data = yf.download(tickers=" ".join(tickers), period=period, interval=interval,
-                           group_by="ticker", auto_adjust=False, progress=False, threads=True)
+                           group_by="ticker", auto_adjust=False, progress=False,
+                           threads=YF_THREADS)
     except Exception as e:
         print(f"[!] yf.download error ({interval}, {len(tickers)} tk): {e}", flush=True)
-        return 0
+        return 0, (_is_rate_limited(e) or _rate_limit_watcher.hit)
+
+    rate_limited = _rate_limit_watcher.hit
     if data is None or data.empty:
-        return 0
+        return 0, rate_limited
 
     sent = 0
     for yfsym, (code, ctype, sector) in by_ticker.items():
@@ -120,16 +169,36 @@ def stream_chunk(instruments_chunk, interval, full):
                 new_max = epoch
         if new_max is not None:
             last_ts[key] = new_max
-    return sent
+    return sent, rate_limited
 
 
 def run_pass(instruments, full):
+    """Return (total_bar_terkirim, aborted: bool). `aborted=True` kalau pass ini
+    dihentikan lebih awal krn 429 beruntun — caller wajib kasih cooldown ekstra,
+    bukan langsung retry cepat (justru akan makin lama blokirnya)."""
     total = 0
+    consecutive_rate_limited = 0
     for interval in CHART_INTERVALS:
         for chunk in chunked(instruments, CHUNK_SIZE):
-            total += stream_chunk(chunk, interval, full)
+            sent, rate_limited = stream_chunk(chunk, interval, full)
+            total += sent
+
+            if rate_limited:
+                consecutive_rate_limited += 1
+                backoff = min(RATE_LIMIT_BACKOFF_SECONDS * (2 ** (consecutive_rate_limited - 1)), 300)
+                print(f"[!] rate-limited ({consecutive_rate_limited}x berturut-turut), "
+                      f"backoff {backoff:.0f}s sebelum chunk berikutnya", flush=True)
+                time.sleep(backoff)
+                if consecutive_rate_limited >= RATE_LIMIT_MAX_CONSECUTIVE:
+                    print(f"[!] {consecutive_rate_limited}x rate-limit beruntun, "
+                          f"hentikan pass ini lebih awal (hindari makin diblokir)", flush=True)
+                    return total, True
+            else:
+                consecutive_rate_limited = 0
+                if CHUNK_DELAY_SECONDS > 0:
+                    time.sleep(CHUNK_DELAY_SECONDS)
         print(f"[i] interval={interval} {'FULL' if full else 'inc'} streamed (cum {total})", flush=True)
-    return total
+    return total, False
 
 
 def wait_for_client():
@@ -149,10 +218,19 @@ def fetch_loop(instruments):
             force_full.clear()
             last_ts.clear()
             print("[*] FULL backfill pass...", flush=True)
-        total = run_pass(instruments, full)
-        if full:
+        total, aborted = run_pass(instruments, full)
+        if full and not aborted:
             last_full = time.monotonic()
-        print(f"[i] pass selesai: {total} bar terkirim, {len(clients)} client", flush=True)
+        print(f"[i] pass selesai: {total} bar terkirim, {len(clients)} client"
+              f"{' (di-abort krn rate-limit)' if aborted else ''}", flush=True)
+
+        if aborted:
+            # Pass gagal krn 429 → pass FULL belum tuntas, coba lagi nanti. Cooldown
+            # panjang di sini, BUKAN retry cepat, supaya IP tidak makin lama diblokir.
+            force_full.set()
+            print(f"[i] cooldown {RATE_LIMIT_COOLDOWN_SECONDS:.0f}s sebelum coba lagi...", flush=True)
+            time.sleep(RATE_LIMIT_COOLDOWN_SECONDS)
+            continue
 
         if time.monotonic() - last_full > REBACKFILL_HOURS * 3600:
             force_full.set()

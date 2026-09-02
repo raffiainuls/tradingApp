@@ -150,6 +150,16 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── EOD resmi IDX (idx.co.id, bypass Cloudflare via headless browser) ───────
+  idx-official:
+    build: ./idx-official
+    hostname: idx-official
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    env_file: .env
+    restart: unless-stopped
+
   frontend:
     build: ./frontend
     ports:
