@@ -1,5 +1,6 @@
 """Koneksi ClickHouse (OHLCV) + PostgreSQL (journal)."""
 import threading
+from datetime import date as _date
 import pandas as pd
 import clickhouse_connect
 from psycopg2.pool import ThreadedConnectionPool
@@ -113,6 +114,41 @@ def latest_bar_date(interval: str) -> str | None:
     except Exception as e:
         print(f"[!] latest_bar_date error: {e}", flush=True)
         return None
+
+
+def fetch_broker_summary(symbol: str, date_str: str, investor: str = "all") -> list[dict]:
+    """Baca cache broker_summary dari ClickHouse (isi oleh sync IndexAlpha, lihat
+    broker_summary.py). Return [] kalau belum pernah di-sync utk symbol+date ini
+    -- caller yang putuskan mau fetch live (konsumsi quota) atau tidak."""
+    sql = """
+        SELECT broker_code, buy_freq, buy_volume, buy_value,
+               sell_freq, sell_volume, sell_value, buy_avg, sell_avg
+        FROM market.broker_summary FINAL
+        WHERE symbol = {sym:String} AND date = {d:Date} AND investor = {inv:String}
+        ORDER BY (buy_value - sell_value) DESC
+    """
+    try:
+        rows = ch().query(sql, parameters={"sym": symbol, "d": date_str, "inv": investor}).result_rows
+    except Exception as e:
+        print(f"[!] fetch_broker_summary error: {e}", flush=True)
+        return []
+    cols = ["broker_code", "buy_freq", "buy_volume", "buy_value",
+            "sell_freq", "sell_volume", "sell_value", "buy_avg", "sell_avg"]
+    return [dict(zip(cols, r)) for r in rows]
+
+
+def insert_broker_summary(symbol: str, date_str: str, investor: str, rows: list[dict]):
+    if not rows:
+        return
+    cols = ["symbol", "date", "investor", "broker_code", "buy_freq", "buy_volume",
+            "buy_value", "sell_freq", "sell_volume", "sell_value", "buy_avg", "sell_avg"]
+    d = _date.fromisoformat(date_str)
+    data = [[symbol, d, investor, r.get("broker_code", ""),
+              r.get("buy_freq", 0) or 0, r.get("buy_volume", 0) or 0, r.get("buy_value", 0) or 0,
+              r.get("sell_freq", 0) or 0, r.get("sell_volume", 0) or 0, r.get("sell_value", 0) or 0,
+              r.get("buy_avg", 0) or 0, r.get("sell_avg", 0) or 0]
+             for r in rows]
+    ch().insert("broker_summary", data, column_names=cols, database=config.CH_DB)
 
 
 def ensure_watchlist_table():

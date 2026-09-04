@@ -2,8 +2,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
-import type { AiAdvisorAnalysis, AiAdvisorDailyPicks } from "@/lib/types";
-import { fmtPrice, fmtPct, colorOf, scoreColor } from "@/lib/format";
+import type { AiAdvisorAnalysis, AiAdvisorDailyPicks, BrokerSummaryAnalysis } from "@/lib/types";
+import { fmtPrice, fmtPct, fmtMoney, colorOf, scoreColor } from "@/lib/format";
 import TechnicalSummary from "@/components/TechnicalSummary";
 import VerdictBadge from "@/components/VerdictBadge";
 
@@ -22,6 +22,12 @@ export default function AdvisorPage() {
   const [daily, setDaily] = useState<AiAdvisorDailyPicks | null>(null);
   const [dailyLoading, setDailyLoading] = useState(false);
   const [dailyError, setDailyError] = useState<string | null>(null);
+
+  // ── Broker Summary per-saham (on-demand, quota IndexAlpha terbatas) ──
+  const [brokerOpen, setBrokerOpen] = useState<string | null>(null);
+  const [brokerLoading, setBrokerLoading] = useState<string | null>(null);
+  const [brokerResults, setBrokerResults] = useState<Record<string, BrokerSummaryAnalysis>>({});
+  const [brokerErrors, setBrokerErrors] = useState<Record<string, string>>({});
 
   // ── Preselect symbol dari ?symbol= (mis. dari Watchlist/Screener) ──
   useEffect(() => {
@@ -50,6 +56,22 @@ export default function AdvisorPage() {
       setDailyError(friendlyError(e));
     } finally {
       setDailyLoading(false);
+    }
+  };
+
+  const toggleBrokerSummary = async (sym: string) => {
+    if (brokerOpen === sym) { setBrokerOpen(null); return; }
+    setBrokerOpen(sym);
+    if (brokerResults[sym] || brokerLoading === sym) return;
+    setBrokerLoading(sym);
+    setBrokerErrors((prev) => { const n = { ...prev }; delete n[sym]; return n; });
+    try {
+      const res = await api.aiAdvisorBrokerSummary(sym);
+      setBrokerResults((prev) => ({ ...prev, [sym]: res }));
+    } catch (e) {
+      setBrokerErrors((prev) => ({ ...prev, [sym]: friendlyError(e) }));
+    } finally {
+      setBrokerLoading(null);
     }
   };
 
@@ -134,8 +156,7 @@ export default function AdvisorPage() {
               {daily.data_as_of && <div className="text-[11px] text-dim">Data per {daily.data_as_of}</div>}
               <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2">
                 {daily.candidates.map((c) => (
-                  <Link key={c.symbol} href={`/analyst?symbol=${c.symbol}`}
-                        className="card p-3 hover:bg-panel2 transition-colors">
+                  <div key={c.symbol} className="card p-3">
                     <div className="flex items-center justify-between">
                       <span className="font-semibold">{c.symbol}</span>
                       <span className={`text-xs font-mono font-bold ${scoreColor(c.score)}`}>{c.score}</span>
@@ -144,12 +165,86 @@ export default function AdvisorPage() {
                       <VerdictBadge v={c.verdict} />
                       <span className={`text-xs font-mono ${colorOf(c.change_pct)}`}>{fmtPct(c.change_pct)}</span>
                     </div>
-                  </Link>
+                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-border">
+                      <Link href={`/analyst?symbol=${c.symbol}`} className="text-[11px] text-dim hover:text-txt">
+                        Lihat chart →
+                      </Link>
+                      <button
+                        className="text-[11px] text-accent hover:underline"
+                        onClick={() => toggleBrokerSummary(c.symbol)}
+                      >
+                        {brokerLoading === c.symbol ? "⏳ Menganalisa…" : "📊 Broker Summary"}
+                      </button>
+                    </div>
+                  </div>
                 ))}
                 {!daily.candidates.length && (
                   <div className="col-span-full text-xs text-dim p-4">Tidak ada kandidat bullish saat ini.</div>
                 )}
               </div>
+
+              {brokerOpen && (
+                <div className="card p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="label">📊 Broker Summary — {brokerOpen}</div>
+                    <button className="text-xs text-dim hover:text-txt" onClick={() => setBrokerOpen(null)}>✕ Tutup</button>
+                  </div>
+
+                  {brokerLoading === brokerOpen && (
+                    <div className="text-sm text-dim italic">⏳ Mengambil data broker & minta interpretasi AI…</div>
+                  )}
+                  {brokerErrors[brokerOpen] && (
+                    <div className="text-sm text-down">{brokerErrors[brokerOpen]}</div>
+                  )}
+                  {brokerResults[brokerOpen] && (() => {
+                    const b = brokerResults[brokerOpen];
+                    return (
+                      <div className="space-y-3">
+                        <div className="text-[11px] text-dim">
+                          Data per {b.date} · {b.broker_count} broker aktif · sumber: {b.source === "cache" ? "cache" : "live"}
+                        </div>
+                        <div className="grid sm:grid-cols-2 gap-3">
+                          <div>
+                            <div className="text-[11px] text-dim mb-1">Top Net Buy</div>
+                            <div className="space-y-1">
+                              {b.top_buy.length ? b.top_buy.map((r) => (
+                                <div key={r.broker_code} className="flex items-center justify-between text-xs font-mono">
+                                  <span>{r.broker_code}</span>
+                                  <span className="text-up">{fmtMoney(r.buy_value - r.sell_value)}</span>
+                                </div>
+                              )) : <div className="text-xs text-dim italic">Tidak ada net-buy signifikan</div>}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-[11px] text-dim mb-1">Top Net Sell</div>
+                            <div className="space-y-1">
+                              {b.top_sell.length ? b.top_sell.map((r) => (
+                                <div key={r.broker_code} className="flex items-center justify-between text-xs font-mono">
+                                  <span>{r.broker_code}</span>
+                                  <span className="text-down">{fmtMoney(r.buy_value - r.sell_value)}</span>
+                                </div>
+                              )) : <div className="text-xs text-dim italic">Tidak ada net-sell signifikan</div>}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between text-xs bg-panel2 rounded px-3 py-2">
+                          <span className="text-dim">Net value pasar (semua broker)</span>
+                          <span className={`font-mono font-bold ${colorOf(b.net_value)}`}>{fmtMoney(b.net_value)}</span>
+                        </div>
+                        <div>
+                          <div className="label mb-1">🤖 Interpretasi AI (Hermes)</div>
+                          <div className="text-sm leading-relaxed whitespace-pre-line">
+                            {b.ai_narrative
+                              ? b.ai_narrative
+                              : <span className="italic text-dim">Narasi AI tidak tersedia (Hermes bridge tidak terjangkau) — data mentah di atas tetap valid.</span>}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
               {daily.ai_commentary && (
                 <div className="card p-4">
                   <div className="label mb-2">🤖 Ringkasan Pasar (Hermes)</div>
