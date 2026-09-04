@@ -79,7 +79,11 @@ services:
     image: postgres:16-alpine
     hostname: postgres
     ports:
-      - "5432:5432"
+      # Host port configurable (POSTGRES_HOST_PORT) -- di server bareng (mis. VPS
+      # yang juga jalanin project lain), 5432 bisa bentrok sama Postgres project
+      # lain. Port DALAM Docker network tetap 5432 (backend connect via hostname
+      # "postgres", tidak lewat host port ini sama sekali).
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
     env_file: .env
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
