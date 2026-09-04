@@ -53,3 +53,9 @@ HERMES_BRIDGE_API_KEY       = os.environ.get("HERMES_BRIDGE_API_KEY", "").strip(
 # DAILY_TOP_N yang genuinely lolos kriteria (lihat ai_advisor.py).
 AI_ADVISOR_POOL_SIZE        = int(os.environ.get("AI_ADVISOR_POOL_SIZE", "50"))
 AI_ADVISOR_DAILY_TOP_N      = int(os.environ.get("AI_ADVISOR_DAILY_TOP_N", "8"))
+
+# Broker Summary per-saham (IndexAlpha, pihak ketiga berbayar, quota terbatas).
+# Kosong = fitur nonaktif (endpoint balas error, bukan crash). Lihat gotcha
+# CLAUDE.md soal ini -- IDX resmi cuma punya agregat market-wide, bukan per-saham.
+INDEXALPHA_API_KEY  = os.environ.get("INDEXALPHA_API_KEY", "").strip()
+INDEXALPHA_BASE_URL = os.environ.get("INDEXALPHA_BASE_URL", "https://api.indexalpha.id").rstrip("/")

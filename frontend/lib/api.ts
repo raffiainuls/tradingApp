@@ -1,7 +1,7 @@
 import type {
   HistoryResponse, SymbolInfo, Quote, Position, PortfolioSummary,
   Allocation, Transaction, Analytics, ScreenerResult, WatchlistItem, ScreenerPreset,
-  AiPick, AiPicksStatus, AiAdvisorAnalysis, AiAdvisorDailyPicks,
+  AiPick, AiPicksStatus, AiAdvisorAnalysis, AiAdvisorDailyPicks, BrokerSummaryAnalysis,
 } from "./types";
 
 // Alamat backend diturunkan saat RUNTIME dari host yang dipakai membuka frontend
@@ -91,4 +91,6 @@ export const api = {
   aiAdvisorAnalysis: (symbol: string) =>
     send<AiAdvisorAnalysis>("POST", `/api/ai-advisor/analysis?symbol=${encodeURIComponent(symbol)}`),
   aiAdvisorDailyPicks: () => send<AiAdvisorDailyPicks>("POST", "/api/ai-advisor/daily-picks"),
+  aiAdvisorBrokerSummary: (symbol: string) =>
+    send<BrokerSummaryAnalysis>("POST", `/api/ai-advisor/broker-summary?symbol=${encodeURIComponent(symbol)}`),
 };

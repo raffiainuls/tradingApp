@@ -106,6 +106,18 @@ export interface AiAdvisorDailyPicks {
   data_as_of: string | null; candidates: ScreenerResult[]; ai_commentary: string | null;
 }
 
+// ── Broker Summary per-saham (IndexAlpha, pihak ketiga) ──
+export interface BrokerRow {
+  broker_code: string; buy_freq: number; buy_volume: number; buy_value: number;
+  sell_freq: number; sell_volume: number; sell_value: number; buy_avg: number; sell_avg: number;
+}
+export interface BrokerSummaryAnalysis {
+  symbol: string; date: string; broker_count: number; source: string | null;
+  top_buy: BrokerRow[]; top_sell: BrokerRow[];
+  total_buy_value: number; total_sell_value: number; net_value: number;
+  ai_narrative: string | null;
+}
+
 export interface Analytics {
   stats: {
     total_realized_pnl: number; total_trades: number; wins: number; losses: number;
