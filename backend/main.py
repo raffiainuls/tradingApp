@@ -76,6 +76,7 @@ async def lifespan(app: FastAPI):
         db.init_pg_pool()
         db.ensure_watchlist_table()
         db.ensure_ai_picks_table()
+        db.ensure_ai_advisor_picks_table()
         print("[+] Postgres pool ready", flush=True)
     except Exception as e:
         print(f"[!] Postgres pool init failed: {e}", flush=True)

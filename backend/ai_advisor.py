@@ -168,4 +168,15 @@ def daily_recommendations(top_n: int | None = None) -> dict:
     commentary = ask_hermes(prompt)
     candidates = _parse_picks(commentary, pool, n)
 
+    # Hitung entry/target/cutloss per kandidat dan simpan batch ke DB
+    for c in candidates:
+        entry, target, cutloss = _atr_levels(c["close"], c.get("atr"))
+        c.setdefault("entry_price", entry)
+        c.setdefault("target_price", target)
+        c.setdefault("cutloss_price", cutloss)
+    try:
+        db.save_ai_advisor_picks(candidates, commentary, data_as_of)
+    except Exception as e:
+        print(f"[!] save_ai_advisor_picks error: {e}", flush=True)
+
     return {"data_as_of": data_as_of, "candidates": candidates, "ai_commentary": commentary}

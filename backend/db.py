@@ -197,6 +197,93 @@ def ensure_ai_picks_table():
             """)
 
 
+def ensure_ai_advisor_picks_table():
+    """Tabel persistensi hasil daily_recommendations() AI Advisor (Tab 5)."""
+    with pg_cursor(commit=True) as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS ai_advisor_daily_picks (
+                id            SERIAL PRIMARY KEY,
+                symbol        VARCHAR(20)   NOT NULL,
+                name          VARCHAR(100),
+                board         VARCHAR(50),
+                verdict       VARCHAR(20),
+                score         INTEGER,
+                close_price   NUMERIC(14,2) NOT NULL,
+                entry_price   NUMERIC(14,2),
+                target_price  NUMERIC(14,2),
+                cutloss_price NUMERIC(14,2),
+                rsi           NUMERIC(6,2),
+                macd_hist     NUMERIC(12,4),
+                adx           NUMERIC(6,2),
+                atr           NUMERIC(12,4),
+                data_as_of    DATE,
+                ai_commentary TEXT,
+                batch_at      TIMESTAMPTZ   NOT NULL DEFAULT now()
+            )
+        """)
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ai_adv_picks_batch_at ON ai_advisor_daily_picks(batch_at)"
+        )
+
+
+def save_ai_advisor_picks(candidates: list[dict], commentary: str | None, data_as_of: str | None):
+    """Simpan satu batch hasil AI Advisor daily picks ke DB."""
+    if not candidates:
+        return
+    batch_at_val = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+    with pg_cursor(commit=True) as cur:
+        for c in candidates:
+            cur.execute("""
+                INSERT INTO ai_advisor_daily_picks
+                    (symbol, name, board, verdict, score,
+                     close_price, entry_price, target_price, cutloss_price,
+                     rsi, macd_hist, adx, atr, data_as_of, ai_commentary, batch_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (
+                c.get("symbol"), c.get("name"), c.get("board"),
+                c.get("verdict"), c.get("score"),
+                c.get("close"), c.get("entry_price"), c.get("target_price"), c.get("cutloss_price"),
+                c.get("rsi"), c.get("macd_hist"), c.get("adx"), c.get("atr"),
+                data_as_of, commentary, batch_at_val,
+            ))
+
+
+def get_ai_advisor_history() -> list[dict]:
+    """Semua batch AI Advisor daily picks, dikelompok per batch_at."""
+    with pg_cursor() as cur:
+        cur.execute("""
+            SELECT id, symbol, name, board, verdict, score,
+                   close_price, entry_price, target_price, cutloss_price,
+                   rsi, macd_hist, adx, atr, data_as_of, ai_commentary, batch_at
+            FROM ai_advisor_daily_picks
+            ORDER BY batch_at DESC, score DESC NULLS LAST
+        """)
+        rows = cur.fetchall()
+    batches: dict = {}
+    for r in rows:
+        key = r["batch_at"].isoformat()
+        batches.setdefault(key, {
+            "batch_at": key,
+            "data_as_of": str(r["data_as_of"]) if r["data_as_of"] else None,
+            "ai_commentary": r["ai_commentary"],
+            "picks": [],
+        })["picks"].append({
+            "id": r["id"],
+            "symbol": r["symbol"],
+            "name": r["name"],
+            "board": r["board"],
+            "verdict": r["verdict"],
+            "score": r["score"],
+            "close_price": float(r["close_price"]) if r["close_price"] else None,
+            "entry_price": float(r["entry_price"]) if r["entry_price"] else None,
+            "target_price": float(r["target_price"]) if r["target_price"] else None,
+            "cutloss_price": float(r["cutloss_price"]) if r["cutloss_price"] else None,
+            "rsi": float(r["rsi"]) if r["rsi"] else None,
+            "atr": float(r["atr"]) if r["atr"] else None,
+        })
+    return list(batches.values())
+
+
 def list_symbols() -> list[dict]:
     """Semua symbol yang punya data di ClickHouse."""
     try:
