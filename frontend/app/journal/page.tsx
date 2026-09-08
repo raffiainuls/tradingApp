@@ -30,22 +30,22 @@ export default function JournalPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+      <div className="page-header flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold">Trading Journal</h1>
           <p className="text-xs text-dim mt-0.5">Portofolio aktif, log transaksi & analisis performa</p>
         </div>
-        <div className="flex gap-1">
+        <div className="flex max-w-full gap-1 overflow-x-auto" role="tablist" aria-label="Bagian jurnal">
           {([["porto", "Portofolio"], ["tx", "Transaksi"], ["analytics", "Analisis"]] as [Tab, string][]).map(
             ([k, l]) => (
-              <button key={k} onClick={() => setTab(k)} className={`btn ${tab === k ? "btn-active" : ""}`}>{l}</button>
+              <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className={`btn ${tab === k ? "btn-active" : ""}`}>{l}</button>
             )
           )}
         </div>
       </div>
 
       {/* ── Summary cards (selalu tampil) ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-6 py-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-4 py-4 sm:px-6">
         <Stat label="Nilai Portofolio" value={fmtMoney(summary?.total_value)} />
         <Stat label="Modal" value={fmtMoney(summary?.total_cost)} />
         <Stat
@@ -62,7 +62,7 @@ export default function JournalPage() {
         />
       </div>
 
-      <div className="px-6 pb-8">
+      <div className="px-4 pb-8 sm:px-6">
         {tab === "porto" && (
           <PortfolioTab
             positions={positions}

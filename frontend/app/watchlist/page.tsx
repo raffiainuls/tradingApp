@@ -78,20 +78,23 @@ export default function WatchlistPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="px-6 py-4 border-b border-border">
-        <h1 className="text-xl font-bold">Watchlist</h1>
-        <p className="text-xs text-dim mt-0.5">Saham pantauan manual + AI Picks harian (top bullish dari seluruh universe IDX)</p>
+      <div className="page-header flex flex-wrap items-start justify-between gap-3">
+        <div><h1 className="text-xl font-bold">Watchlist</h1>
+        <p className="text-xs text-dim mt-0.5">Saham pantauan manual + AI Picks harian (top bullish dari seluruh universe IDX)</p></div>
+        <Link href="/watchlist/history" className="btn" aria-label="Buka riwayat AI Picks">Riwayat AI Picks →</Link>
       </div>
 
-      <div className="grid lg:grid-cols-[300px_1fr] gap-4 p-6">
+      <div className="page-content grid lg:grid-cols-[300px_1fr] gap-4">
         {/* ── Watchlist manual ── */}
         <div className="space-y-3">
           <div className="card p-3">
             <div className="label mb-2">Tambah ke Watchlist</div>
             <div className="space-y-2">
-              <input className="input" placeholder="Kode (mis. BBCA)" value={addSym}
+              <label htmlFor="watch-symbol" className="sr-only">Kode saham</label>
+              <input id="watch-symbol" className="input" placeholder="Kode (mis. BBCA)" value={addSym}
                      onChange={(e) => setAddSym(e.target.value)} onKeyDown={(e) => e.key === "Enter" && add(addSym, addNote)} />
-              <input className="input" placeholder="Catatan (opsional)" value={addNote}
+              <label htmlFor="watch-note" className="sr-only">Catatan</label>
+              <input id="watch-note" className="input" placeholder="Catatan (opsional)" value={addNote}
                      onChange={(e) => setAddNote(e.target.value)} />
               <button className="btn btn-active w-full" onClick={() => add(addSym, addNote)}>+ Tambah</button>
             </div>

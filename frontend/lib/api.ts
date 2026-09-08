@@ -1,7 +1,7 @@
 import type {
   HistoryResponse, SymbolInfo, Quote, Position, PortfolioSummary,
   Allocation, Transaction, Analytics, ScreenerResult, WatchlistItem, ScreenerPreset,
-  AiPick, AiPicksStatus, AiAdvisorAnalysis, AiAdvisorDailyPicks, BrokerSummaryAnalysis,
+  AiPick, AiPicksStatus, AiPicksHistoryResponse, AiAdvisorAnalysis, AiAdvisorDailyPicks, BrokerSummaryAnalysis,
 } from "./types";
 
 // Alamat backend diturunkan saat RUNTIME dari host yang dipakai membuka frontend
@@ -90,6 +90,7 @@ export const api = {
 
   // ── AI Picks (Tab 3) ──
   aiPicks: () => get<{ picks: AiPick[] }>("/api/ai-picks"),
+  aiPicksHistory: () => get<AiPicksHistoryResponse>("/api/ai-picks/history"),
   aiPicksStatus: () => get<AiPicksStatus>("/api/ai-picks/status"),
   generateAiPicks: () => send<{ started: boolean }>("POST", "/api/ai-picks/generate"),
 
