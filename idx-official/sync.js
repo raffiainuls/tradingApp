@@ -92,10 +92,7 @@ function toRows(data, dateIso) {
     }));
 }
 
-async function insertRows(rows) {
-  if (rows.length === 0) return;
-  const body = rows.map((r) => JSON.stringify(r)).join('\n');
-  const query = `INSERT INTO ${CH_DB}.ohlcv_idx_official FORMAT JSONEachRow`;
+async function chInsert(query, body) {
   const url = `http://${CH_HOST}:${CH_PORT}/?query=${encodeURIComponent(query)}`;
   const res = await fetch(url, {
     method: 'POST',
@@ -112,6 +109,38 @@ async function insertRows(rows) {
   }
 }
 
+async function insertRows(rows) {
+  if (rows.length === 0) return;
+  const body = rows.map((r) => JSON.stringify(r)).join('\n');
+  await chInsert(`INSERT INTO ${CH_DB}.ohlcv_idx_official FORMAT JSONEachRow`, body);
+}
+
+// Fallback: tulis data IDX ke market.ohlcv (tabel utama yFinance) dengan format
+// kompatibel — ts = midnight UTC tanggal bursa (sesuai konvensi yFinance 1d IDX).
+// ReplacingMergeTree(ingested_at) otomatis dedup: kalau yFinance sudah isi hari itu
+// dengan ingested_at lebih baru, data IDX ini akan tersingkir saat optimize/merge;
+// kalau yFinance gagal (429), data IDX menjadi satu-satunya baris untuk hari itu.
+async function insertToOhlcv(rows) {
+  if (rows.length === 0) return;
+  const ohlcvRows = rows
+    .filter((r) => r.close > 0)
+    .map((r) => ({
+      symbol: r.symbol,
+      type: 'stock',
+      sector: '',
+      interval: '1d',
+      ts: `${r.date} 00:00:00`,
+      open: r.open,
+      high: r.high,
+      low: r.low,
+      close: r.close,
+      volume: r.volume,
+    }));
+  if (ohlcvRows.length === 0) return;
+  const body = ohlcvRows.map((r) => JSON.stringify(r)).join('\n');
+  await chInsert(`INSERT INTO ${CH_DB}.ohlcv FORMAT JSONEachRow`, body);
+}
+
 function dateOverrideFromArgv() {
   const arg = process.argv.find((a) => a.startsWith('--date='));
   if (!arg) return null;
@@ -125,9 +154,12 @@ async function runOnce() {
   log(`Fetch GetStockSummary tanggal ${iso} (${compact})...`);
   const data = await fetchStockSummary(compact);
   log(`Dapat ${data.length} baris dari idx.co.id.`);
+  if (data.length === 0) return;
   const rows = toRows(data, iso);
   await insertRows(rows);
   log(`Insert ${rows.length} baris ke ${CH_DB}.ohlcv_idx_official selesai.`);
+  await insertToOhlcv(rows);
+  log(`Insert ${rows.filter((r) => r.close > 0).length} baris ke ${CH_DB}.ohlcv (1d fallback) selesai.`);
 }
 
 async function runWithRetry() {
