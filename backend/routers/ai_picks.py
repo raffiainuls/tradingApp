@@ -16,6 +16,11 @@ def get_ai_picks():
     return {"picks": ai_picks.latest_batch()}
 
 
+@router.get("/ai-picks/history")
+def get_ai_picks_history():
+    return {"batches": ai_picks.history_batches()}
+
+
 @router.get("/ai-picks/status")
 def get_ai_picks_status():
     return {"generating": ai_picks.is_generating(), "last_generated_at": ai_picks.last_generated_at()}
