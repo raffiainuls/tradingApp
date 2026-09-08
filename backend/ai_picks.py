@@ -77,22 +77,45 @@ def generate(top_n: int | None = None):
         n = top_n or config.AI_PICKS_TOP_N
         candidates = _pick_candidates(n)
         batch_at = datetime.now(timezone.utc)
-        rows = []
+        saved = 0
         for c in candidates:
-            reasoning = call_llm(_build_prompt(c))
-            entry, tp1, tp2, tp3, cutloss = _levels(c["close"], c.get("atr"))
-            rows.append((c["symbol"], c.get("sector"), c["verdict"], c["score"],
-                         c.get("rsi"), c.get("macd_hist"), c.get("adx"), c.get("atr"),
-                         c["close"], entry, tp2, cutloss, tp1, tp2, tp3, reasoning, batch_at))
-        with db.pg_cursor(commit=True) as cur:
-            for r in rows:
+            try:
+                reasoning = call_llm(_build_prompt(c))
+            except Exception as llm_err:
+                # LLM gagal untuk satu stock: skip, jangan batalkan seluruh batch
+                print(f"[!] LLM gagal untuk {c['symbol']}: {llm_err}", flush=True)
+                reasoning = None
+            levels = compute_area_levels(
+                c["close"], c.get("atr"),
+                swing_low=c.get("swing_low"),
+                swing_high=c.get("swing_high"),
+                bb_lower=c.get("bb_lower"),
+                bb_upper=c.get("bb_upper"),
+            )
+            row = (
+                c["symbol"], c.get("sector"), c["verdict"], c["score"],
+                c.get("rsi"), c.get("macd_hist"), c.get("adx"), c.get("atr"),
+                c["close"],
+                levels["entry_price"], levels["target_price"], levels["cutloss_price"],
+                levels["buy_area_low"], levels["buy_area_high"],
+                levels["tp1"], levels["tp2"], levels["tp3"],
+                levels["cutloss_area_low"], levels["cutloss_area_high"],
+                levels["entry_status"],
+                reasoning, batch_at,
+            )
+            # Simpan per-pick langsung supaya partial batch tetap tersimpan walau LLM gagal di tengah
+            with db.pg_cursor(commit=True) as cur:
                 cur.execute("""INSERT INTO ai_picks
                     (symbol, sector, verdict, score, rsi, macd_hist, adx, atr,
                      close_price, entry_price, target_price, cutloss_price,
-                     tp1, tp2, tp3, reasoning, batch_at)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", r)
+                     buy_area_low, buy_area_high,
+                     tp1, tp2, tp3,
+                     cutloss_area_low, cutloss_area_high,
+                     entry_status, reasoning, batch_at)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", row)
+            saved += 1
         _last_generated_at = time.time()
-        print(f"[+] AI Picks batch generated: {len(rows)} symbols", flush=True)
+        print(f"[+] AI Picks batch generated: {saved}/{len(candidates)} symbols", flush=True)
     except Exception as e:
         print(f"[!] AI Picks generation failed: {e}", flush=True)
     finally:
