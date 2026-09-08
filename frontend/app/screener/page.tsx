@@ -12,7 +12,8 @@ export default function ScreenerPage() {
   const [presets, setPresets] = useState<ScreenerPreset[]>([]);
   const [results, setResults] = useState<ScreenerResult[]>([]);
   const [watch, setWatch] = useState<WatchlistItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [interval, setInterval] = useState("1d");
   const [activePreset, setActivePreset] = useState("strong_buy");
 
@@ -26,13 +27,13 @@ export default function ScreenerPage() {
   const loadWatch = () => api.watchlist().then((d) => setWatch(d.watchlist)).catch(() => {});
 
   const runScreen = (extra: Record<string, any> = {}) => {
-    setLoading(true);
+    setLoading(true); setError(null);
     const params: Record<string, any> = {
       interval, limit: 50, exclude_special: exclSpecial,
       min_score: minScore, rsi_below: rsiBelow, min_vol_ratio: minVol,
       above_ma200: aboveMa200, ...extra,
     };
-    api.screener(params).then((d) => setResults(d.results)).catch(() => setResults([]))
+    api.screener(params).then((d) => setResults(d.results)).catch(() => { setResults([]); setError("Screener gagal dimuat. Periksa koneksi lalu coba lagi."); })
       .finally(() => setLoading(false));
   };
 
@@ -41,7 +42,8 @@ export default function ScreenerPage() {
     loadWatch();
     // initial: strong buy
     api.screener({ interval: "1d", min_score: 50, above_ma200: true, exclude_special: true, limit: 50 })
-      .then((d) => setResults(d.results)).catch(() => {});
+      .then((d) => setResults(d.results)).catch(() => setError("Screener gagal dimuat. Periksa koneksi lalu coba lagi."))
+      .finally(() => setLoading(false));
   }, []);
 
   const applyPreset = (p: ScreenerPreset) => {
@@ -49,9 +51,9 @@ export default function ScreenerPage() {
     // reset manual filters, apply preset params
     setMinScore(p.params.min_score ?? ""); setRsiBelow(p.params.rsi_below ?? "");
     setMinVol(p.params.min_vol_ratio ?? ""); setAboveMa200(!!p.params.above_ma200);
-    setLoading(true);
+    setLoading(true); setError(null);
     api.screener({ interval, exclude_special: exclSpecial, limit: 50, ...p.params })
-      .then((d) => setResults(d.results)).catch(() => setResults([]))
+      .then((d) => setResults(d.results)).catch(() => { setResults([]); setError("Preset gagal diterapkan. Silakan coba lagi."); })
       .finally(() => setLoading(false));
   };
 
@@ -65,12 +67,12 @@ export default function ScreenerPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="px-6 py-4 border-b border-border">
+      <div className="page-header">
         <h1 className="text-xl font-bold">Screener</h1>
         <p className="text-xs text-dim mt-0.5">Saring & ranking saham rule-based dari seluruh universe IDX (skor komposit teknikal)</p>
       </div>
 
-      <div className="p-6 space-y-3">
+      <div className="page-content space-y-3">
         <div className="card p-3 space-y-3">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="label">Preset:</span>
@@ -105,6 +107,7 @@ export default function ScreenerPage() {
             <div className="label">Hasil Screener {loading ? "(memuat…)" : `(${results.length})`}</div>
           </div>
           <table className="w-full text-sm mt-2">
+            <caption className="sr-only">Daftar saham hasil penyaringan</caption>
             <thead>
               <tr className="text-left text-dim text-xs border-b border-border">
                 {["#", "Kode", "Harga", "Chg%", "Skor", "Sinyal", "RSI", "Vol×", "vs MA200", "Papan", ""].map((h) =>
@@ -112,6 +115,7 @@ export default function ScreenerPage() {
               </tr>
             </thead>
             <tbody>
+              {loading && <tr><td colSpan={11} className="px-3 py-8 text-center text-dim">Memuat hasil screener…</td></tr>}
               {results.map((r, i) => (
                 <tr key={r.symbol} className="border-b border-border/40 hover:bg-panel2">
                   <td className="px-3 py-2 text-dim">{i + 1}</td>
@@ -140,6 +144,7 @@ export default function ScreenerPage() {
             </tbody>
           </table>
         </div>
+        {error && <div className="status-message border-down/40 text-down" role="alert">{error}</div>}
       </div>
     </div>
   );

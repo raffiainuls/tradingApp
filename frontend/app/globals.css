@@ -17,6 +17,13 @@ html, body {
 
 * { box-sizing: border-box; }
 
+:focus-visible {
+  outline: 2px solid #3d8bff;
+  outline-offset: 2px;
+}
+
+button:disabled { cursor: not-allowed; }
+
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: #0a0e17; }
 ::-webkit-scrollbar-thumb { background: #1f2940; border-radius: 4px; }
@@ -29,6 +36,15 @@ html, body {
   .btn {
     @apply px-3 py-1.5 rounded-md text-sm font-medium border border-border bg-panel2
            text-dim hover:text-txt hover:border-accent transition-colors;
+  }
+  .page-header {
+    @apply border-b border-border px-4 py-4 sm:px-6;
+  }
+  .page-content {
+    @apply p-4 sm:p-6;
+  }
+  .status-message {
+    @apply card p-6 text-center text-sm text-dim;
   }
   .btn-active {
     @apply bg-accent/15 text-accent border-accent;
@@ -53,3 +69,12 @@ html, body {
 /* Ticker tape marquee (footer Analyst) */
 .marquee { animation: marquee 45s linear infinite; will-change: transform; }
 @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

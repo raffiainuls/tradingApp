@@ -121,9 +121,9 @@ export default function AnalystPage() {
 
   return (
     <div className="flex flex-col h-full">
-     <div className="flex flex-1 min-h-0">
+     <div className="flex flex-1 min-h-0 flex-col md:flex-row">
       {/* ── Symbol list ── */}
-      <div className="w-52 shrink-0 border-r border-border flex flex-col bg-panel">
+      <div className="h-32 w-full shrink-0 border-b border-border flex flex-col bg-panel md:h-auto md:w-52 md:border-b-0 md:border-r">
         <div className="p-2 border-b border-border">
           <input
             className="input"
@@ -135,12 +135,12 @@ export default function AnalystPage() {
             {quotesLoading ? "memuat…" : `${filtered.length} emiten`}
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex flex-1 overflow-x-auto overflow-y-hidden md:block md:overflow-y-auto md:overflow-x-hidden">
           {filtered.map((q) => (
             <button
               key={q.symbol}
               onClick={() => setSymbol(q.symbol)}
-              className={`w-full flex items-center justify-between px-3 py-2 text-left border-b border-border/40 hover:bg-panel2 transition-colors ${
+              className={`min-w-40 flex items-center justify-between px-3 py-2 text-left border-r border-border/40 hover:bg-panel2 transition-colors md:w-full md:min-w-0 md:border-r-0 md:border-b ${
                 q.symbol === symbol ? "bg-accent/10 border-l-2 border-l-accent" : ""
               }`}
             >
@@ -167,8 +167,8 @@ export default function AnalystPage() {
 
       {/* ── Chart area ── */}
       <div className="flex-1 flex flex-col min-w-0">
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
-          <div className="flex items-baseline gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 border-b border-border sm:px-4">
+          <div className="flex flex-wrap items-baseline gap-2 sm:gap-3">
             <h1 className="text-xl font-bold">{symbol}</h1>
             <span className="text-sm text-dim">{curQuote?.sector || ""}</span>
             {curQuote && (
@@ -180,11 +180,11 @@ export default function AnalystPage() {
               </>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex w-full items-center justify-between gap-2 sm:w-auto">
             <span className={`text-[10px] px-2 py-0.5 rounded-full ${wsStatus === "live" ? "bg-up/15 text-up" : "bg-down/15 text-down"}`}>
               {wsStatus === "live" ? "● LIVE" : "○ OFFLINE"}
             </span>
-            <div className="flex gap-1">
+            <div className="flex gap-1 overflow-x-auto">
               {INTERVALS.map((iv) => (
                 <button
                   key={iv}
@@ -198,7 +198,7 @@ export default function AnalystPage() {
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 relative">
+        <div className="relative min-h-[420px] flex-1 md:min-h-0">
           {loading && (
             <div className="absolute inset-0 flex items-center justify-center text-dim text-sm z-20 pointer-events-none">
               Memuat…
@@ -217,7 +217,7 @@ export default function AnalystPage() {
       </div>
 
       {/* ── Right panel ── */}
-      <div className="w-72 shrink-0 border-l border-border flex flex-col bg-panel overflow-y-auto">
+      <div className="hidden w-72 shrink-0 border-l border-border flex-col bg-panel overflow-y-auto xl:flex">
         <div className="p-3 border-b border-border">
           <div className="label mb-2">Indikator</div>
           <IndicatorPanel active={active} onToggle={toggle} />

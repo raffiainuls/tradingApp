@@ -91,7 +91,14 @@ export interface AiPick {
   rsi: number | null; macd_hist: number | null; adx: number | null; atr: number | null;
   close_price: number; entry_price: number; target_price: number; cutloss_price: number;
   reasoning: string | null; batch_at: string;
+  current_price?: number | null; pnl_pct?: number | null;
+  status?: "HIT_TARGET" | "CUT_LOSS" | "STILL_OPEN" | "Hit Target" | "Cut Loss" | "Still Open";
+  buy_area_low?: number | null; buy_area_high?: number | null;
+  tp1?: number | null; tp2?: number | null; tp3?: number | null;
+  cutloss_area_low?: number | null; cutloss_area_high?: number | null;
 }
+export interface AiPickBatch { batch_at: string; picks: AiPick[]; }
+export interface AiPicksHistoryResponse { batches?: AiPickBatch[]; picks?: AiPick[]; }
 export interface AiPicksStatus { generating: boolean; last_generated_at: number | null; }
 
 // ── AI Advisor (Tab 5) ──
