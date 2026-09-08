@@ -208,7 +208,7 @@ def ensure_ai_advisor_picks_table():
                 board         VARCHAR(50),
                 verdict       VARCHAR(20),
                 score         INTEGER,
-                close_price   NUMERIC(14,2) NOT NULL,
+                close_price   NUMERIC(14,2),
                 entry_price   NUMERIC(14,2),
                 target_price  NUMERIC(14,2),
                 cutloss_price NUMERIC(14,2),
@@ -218,6 +218,8 @@ def ensure_ai_advisor_picks_table():
                 atr           NUMERIC(12,4),
                 data_as_of    DATE,
                 ai_commentary TEXT,
+                status        VARCHAR(30),
+                pnl_pct       NUMERIC(8,4),
                 batch_at      TIMESTAMPTZ   NOT NULL DEFAULT now()
             )
         """)
@@ -226,25 +228,31 @@ def ensure_ai_advisor_picks_table():
         )
 
 
-def save_ai_advisor_picks(candidates: list[dict], commentary: str | None, data_as_of: str | None):
+def save_ai_advisor_picks(
+    candidates: list[dict],
+    commentary: str | None,
+    data_as_of: str | None,
+    batch_at=None,
+):
     """Simpan satu batch hasil AI Advisor daily picks ke DB."""
     if not candidates:
         return
-    batch_at_val = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+    import datetime as _dt
+    batch_at_val = batch_at or _dt.datetime.now(_dt.timezone.utc)
     with pg_cursor(commit=True) as cur:
         for c in candidates:
             cur.execute("""
                 INSERT INTO ai_advisor_daily_picks
                     (symbol, name, board, verdict, score,
                      close_price, entry_price, target_price, cutloss_price,
-                     rsi, macd_hist, adx, atr, data_as_of, ai_commentary, batch_at)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                     rsi, macd_hist, adx, atr, data_as_of, ai_commentary, status, pnl_pct, batch_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """, (
                 c.get("symbol"), c.get("name"), c.get("board"),
                 c.get("verdict"), c.get("score"),
                 c.get("close"), c.get("entry_price"), c.get("target_price"), c.get("cutloss_price"),
                 c.get("rsi"), c.get("macd_hist"), c.get("adx"), c.get("atr"),
-                data_as_of, commentary, batch_at_val,
+                data_as_of, commentary, c.get("status"), c.get("pnl_pct"), batch_at_val,
             ))
 
 
@@ -254,7 +262,8 @@ def get_ai_advisor_history() -> list[dict]:
         cur.execute("""
             SELECT id, symbol, name, board, verdict, score,
                    close_price, entry_price, target_price, cutloss_price,
-                   rsi, macd_hist, adx, atr, data_as_of, ai_commentary, batch_at
+                   rsi, macd_hist, adx, atr, data_as_of, ai_commentary,
+                   status, pnl_pct, batch_at
             FROM ai_advisor_daily_picks
             ORDER BY batch_at DESC, score DESC NULLS LAST
         """)
@@ -280,6 +289,8 @@ def get_ai_advisor_history() -> list[dict]:
             "cutloss_price": float(r["cutloss_price"]) if r["cutloss_price"] else None,
             "rsi": float(r["rsi"]) if r["rsi"] else None,
             "atr": float(r["atr"]) if r["atr"] else None,
+            "status": r["status"],
+            "pnl_pct": float(r["pnl_pct"]) if r["pnl_pct"] is not None else None,
         })
     return list(batches.values())
 
