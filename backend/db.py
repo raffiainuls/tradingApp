@@ -182,11 +182,19 @@ def ensure_ai_picks_table():
                 entry_price   NUMERIC(14,2) NOT NULL,
                 target_price  NUMERIC(14,2) NOT NULL,
                 cutloss_price NUMERIC(14,2) NOT NULL,
+                tp1           NUMERIC(14,2),
+                tp2           NUMERIC(14,2),
+                tp3           NUMERIC(14,2),
                 reasoning     TEXT,
                 batch_at      TIMESTAMPTZ   NOT NULL DEFAULT now()
             )
         """)
         cur.execute("CREATE INDEX IF NOT EXISTS idx_ai_picks_batch_at ON ai_picks(batch_at)")
+        # Migrasi: tambah kolom tp1/tp2/tp3 ke tabel yang sudah ada
+        for col, typ in [("tp1", "NUMERIC(14,2)"), ("tp2", "NUMERIC(14,2)"), ("tp3", "NUMERIC(14,2)")]:
+            cur.execute(f"""
+                ALTER TABLE ai_picks ADD COLUMN IF NOT EXISTS {col} {typ}
+            """)
 
 
 def list_symbols() -> list[dict]:

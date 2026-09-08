@@ -60,9 +60,11 @@ def _build_prompt(c: dict) -> str:
     )
 
 
-def _levels(close: float, atr: float | None) -> tuple[float, float, float]:
-    a = atr if atr else close * 0.02     # fallback ~2% kalau ATR tidak ada
-    return round(close, 2), round(close + 2 * a, 2), round(close - 1.5 * a, 2)
+def _levels(close: float, atr: float | None) -> tuple[float, float, float, float, float]:
+    """Return (entry, tp1, tp2, tp3, cutloss). ATR fallback = 2% close."""
+    a = atr if atr else close * 0.02
+    entry = round(close, 2)
+    return entry, round(entry + a, 2), round(entry + 2 * a, 2), round(entry + 3 * a, 2), round(entry - 1.5 * a, 2)
 
 
 def generate(top_n: int | None = None):
@@ -78,16 +80,17 @@ def generate(top_n: int | None = None):
         rows = []
         for c in candidates:
             reasoning = call_llm(_build_prompt(c))
-            entry, target, cutloss = _levels(c["close"], c.get("atr"))
+            entry, tp1, tp2, tp3, cutloss = _levels(c["close"], c.get("atr"))
             rows.append((c["symbol"], c.get("sector"), c["verdict"], c["score"],
                          c.get("rsi"), c.get("macd_hist"), c.get("adx"), c.get("atr"),
-                         c["close"], entry, target, cutloss, reasoning, batch_at))
+                         c["close"], entry, tp2, cutloss, tp1, tp2, tp3, reasoning, batch_at))
         with db.pg_cursor(commit=True) as cur:
             for r in rows:
                 cur.execute("""INSERT INTO ai_picks
                     (symbol, sector, verdict, score, rsi, macd_hist, adx, atr,
-                     close_price, entry_price, target_price, cutloss_price, reasoning, batch_at)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", r)
+                     close_price, entry_price, target_price, cutloss_price,
+                     tp1, tp2, tp3, reasoning, batch_at)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""", r)
         _last_generated_at = time.time()
         print(f"[+] AI Picks batch generated: {len(rows)} symbols", flush=True)
     except Exception as e:
@@ -103,3 +106,97 @@ def latest_batch() -> list[dict]:
                         WHERE batch_at = (SELECT max(batch_at) FROM ai_picks)
                         ORDER BY score DESC""")
         return cur.fetchall()
+
+
+def history_batches() -> list[dict]:
+    """Semua batch historis dengan P/L aktual dari ClickHouse.
+
+    Untuk tiap pick: query CH untuk max(high), min(low), current close sejak batch_at.
+    Status & pnl_pct dihitung di sini supaya frontend cukup render.
+    """
+    with db.pg_cursor() as cur:
+        cur.execute("""
+            SELECT id, symbol, sector, verdict, score, atr,
+                   close_price, entry_price, target_price, cutloss_price,
+                   tp1, tp2, tp3, reasoning, batch_at
+            FROM ai_picks
+            ORDER BY batch_at DESC, score DESC
+        """)
+        picks = cur.fetchall()
+
+    if not picks:
+        return []
+
+    # Kumpulkan simbol unik → satu query ClickHouse per simbol
+    symbols = list({p["symbol"] for p in picks})
+    ch_client = db.ch()
+
+    # max_high, min_low, current_close per simbol sejak awal data 1d
+    try:
+        agg_rows = ch_client.query(
+            "SELECT symbol, max(high) AS max_high, min(low) AS min_low, argMax(close, ts) AS current_close "
+            "FROM market.ohlcv WHERE interval = '1d' AND symbol IN %(syms)s "
+            "GROUP BY symbol",
+            parameters={"syms": symbols},
+        ).named_results()
+        agg = {r["symbol"]: r for r in agg_rows}
+    except Exception as e:
+        print(f"[!] history_batches CH query error: {e}", flush=True)
+        agg = {}
+
+    batches: dict[str, list[dict]] = {}
+    for p in picks:
+        sym = p["symbol"]
+        ch = agg.get(sym, {})
+        entry = float(p["entry_price"])
+        cutloss = float(p["cutloss_price"])
+        tp1 = float(p["tp1"]) if p["tp1"] else float(p["target_price"])
+        tp2 = float(p["tp2"]) if p["tp2"] else float(p["target_price"])
+        tp3 = float(p["tp3"]) if p["tp3"] else float(p["target_price"])
+        max_high = float(ch["max_high"]) if ch.get("max_high") else None
+        min_low = float(ch["min_low"]) if ch.get("min_low") else None
+        current_close = float(ch["current_close"]) if ch.get("current_close") else None
+
+        # Tentukan status & pnl_pct
+        if min_low is not None and min_low <= cutloss:
+            status = "CUT_LOSS"
+            pnl_pct = round((cutloss - entry) / entry * 100, 2)
+        elif max_high is not None and max_high >= tp3:
+            status = "HIT_TP3"
+            pnl_pct = round((max_high - entry) / entry * 100, 2)
+        elif max_high is not None and max_high >= tp2:
+            status = "HIT_TP2"
+            pnl_pct = round((max_high - entry) / entry * 100, 2)
+        elif max_high is not None and max_high >= tp1:
+            status = "HIT_TP1"
+            pnl_pct = round((max_high - entry) / entry * 100, 2)
+        else:
+            status = "STILL_OPEN"
+            pnl_pct = round((current_close - entry) / entry * 100, 2) if current_close else None
+
+        pick_dict = {
+            "id": p["id"],
+            "symbol": sym,
+            "sector": p["sector"],
+            "verdict": p["verdict"],
+            "score": p["score"],
+            "atr": float(p["atr"]) if p["atr"] else None,
+            "close_price": float(p["close_price"]),
+            "entry_price": entry,
+            "target_price": float(p["target_price"]),
+            "cutloss_price": cutloss,
+            "tp1": tp1,
+            "tp2": tp2,
+            "tp3": tp3,
+            "reasoning": p["reasoning"],
+            "batch_at": p["batch_at"].isoformat(),
+            "max_high": max_high,
+            "min_low": min_low,
+            "current_close": current_close,
+            "status": status,
+            "pnl_pct": pnl_pct,
+        }
+        key = p["batch_at"].isoformat()
+        batches.setdefault(key, []).append(pick_dict)
+
+    return [{"batch_at": k, "picks": v} for k, v in batches.items()]
