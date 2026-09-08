@@ -98,6 +98,7 @@ export const api = {
   aiAdvisorAnalysis: (symbol: string) =>
     send<AiAdvisorAnalysis>("POST", `/api/ai-advisor/analysis?symbol=${encodeURIComponent(symbol)}`),
   aiAdvisorDailyPicks: () => send<AiAdvisorDailyPicks>("POST", "/api/ai-advisor/daily-picks"),
+  aiAdvisorDailyPicksHistory: () => get<AiPicksHistoryResponse>("/api/ai-advisor/daily-picks/history"),
   aiAdvisorBrokerSummary: (symbol: string) =>
     send<BrokerSummaryAnalysis>("POST", `/api/ai-advisor/broker-summary?symbol=${encodeURIComponent(symbol)}`),
 };

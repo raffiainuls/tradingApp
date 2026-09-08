@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 import ai_advisor
 import broker_summary
+import db
 
 router = APIRouter(prefix="/api")
 _SAFE_ID = re.compile(r"^[A-Z0-9^.]{1,20}$")
@@ -36,6 +37,11 @@ def analyze(symbol: str = Query(...)):
 @router.post("/ai-advisor/daily-picks")
 def daily_picks():
     return ai_advisor.daily_recommendations()
+
+
+@router.get("/ai-advisor/daily-picks/history")
+def daily_picks_history():
+    return {"batches": db.get_ai_advisor_history()}
 
 
 @router.post("/ai-advisor/broker-summary")

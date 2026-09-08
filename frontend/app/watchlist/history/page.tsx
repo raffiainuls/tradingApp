@@ -57,7 +57,7 @@ export default function AiPicksHistoryPage() {
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
-    try { setBatches(normalizeBatches(await api.aiPicksHistory())); }
+    try { setBatches(normalizeBatches(await api.aiAdvisorDailyPicksHistory())); }
     catch { setError("Riwayat AI Picks belum dapat dimuat. Pastikan layanan backend aktif lalu coba lagi."); }
     finally { setLoading(false); }
   }, []);
