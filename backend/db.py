@@ -257,7 +257,12 @@ def save_ai_advisor_picks(
 
 
 def get_ai_advisor_history() -> list[dict]:
-    """Semua batch AI Advisor daily picks, dikelompok per batch_at."""
+    """Semua batch AI Advisor daily picks, dikelompok per batch_at.
+
+    Untuk setiap simbol yang belum punya pnl_pct tersimpan, lookup harga
+    terkini dari ClickHouse (ohlcv + ohlcv_idx_official) untuk menghitung
+    current_close dan P&L secara real-time — sama seperti AI Picks Tab 3.
+    """
     with pg_cursor() as cur:
         cur.execute("""
             SELECT id, symbol, name, board, verdict, score,
@@ -268,9 +273,62 @@ def get_ai_advisor_history() -> list[dict]:
             ORDER BY batch_at DESC, score DESC NULLS LAST
         """)
         rows = cur.fetchall()
+
+    if not rows:
+        return []
+
+    # Lookup current_close dari ClickHouse untuk semua simbol sekaligus
+    symbols = list({r["symbol"] for r in rows})
+    current_prices: dict[str, float] = {}
+    try:
+        ch_client = ch()
+        # Coba ohlcv (yFinance, lebih real-time) dulu
+        yf_rows = ch_client.query(
+            "SELECT symbol, argMax(close, ts) AS cur FROM market.ohlcv "
+            "WHERE interval = '1d' AND symbol IN %(s)s GROUP BY symbol",
+            parameters={"s": symbols},
+        ).named_results()
+        current_prices = {r["symbol"]: float(r["cur"]) for r in yf_rows if r.get("cur")}
+
+        # Tambah dari ohlcv_idx_official untuk simbol yang belum ada
+        missing = [s for s in symbols if s not in current_prices]
+        if missing:
+            idx_rows = ch_client.query(
+                "SELECT symbol, argMax(close, date) AS cur FROM market.ohlcv_idx_official "
+                "WHERE symbol IN %(s)s GROUP BY symbol",
+                parameters={"s": missing},
+            ).named_results()
+            for r in idx_rows:
+                if r.get("cur"):
+                    current_prices[r["symbol"]] = float(r["cur"])
+    except Exception as e:
+        print(f"[!] get_ai_advisor_history CH lookup error: {e}", flush=True)
+
     batches: dict = {}
     for r in rows:
         key = r["batch_at"].isoformat()
+        entry = float(r["entry_price"]) if r["entry_price"] else None
+        target = float(r["target_price"]) if r["target_price"] else None
+        cutloss = float(r["cutloss_price"]) if r["cutloss_price"] else None
+        stored_pnl = float(r["pnl_pct"]) if r["pnl_pct"] is not None else None
+        stored_status = r["status"]
+        current_close = current_prices.get(r["symbol"])
+
+        # Hitung P&L real-time hanya untuk picks baru (belum ada pnl_pct tersimpan)
+        if stored_pnl is None and entry and current_close:
+            pnl_pct = round((current_close - entry) / entry * 100, 2)
+        else:
+            pnl_pct = stored_pnl
+
+        # Tentukan status real-time kalau belum ada status tersimpan
+        if stored_status is None and entry and cutloss and current_close:
+            if current_close <= cutloss:
+                stored_status = "CUT LOSS"
+            elif target and current_close >= target:
+                stored_status = "HIT TP1"
+            else:
+                stored_status = "STILL OPEN"
+
         batches.setdefault(key, {
             "batch_at": key,
             "data_as_of": str(r["data_as_of"]) if r["data_as_of"] else None,
@@ -284,13 +342,14 @@ def get_ai_advisor_history() -> list[dict]:
             "verdict": r["verdict"],
             "score": r["score"],
             "close_price": float(r["close_price"]) if r["close_price"] else None,
-            "entry_price": float(r["entry_price"]) if r["entry_price"] else None,
-            "target_price": float(r["target_price"]) if r["target_price"] else None,
-            "cutloss_price": float(r["cutloss_price"]) if r["cutloss_price"] else None,
+            "entry_price": entry,
+            "target_price": target,
+            "cutloss_price": cutloss,
             "rsi": float(r["rsi"]) if r["rsi"] else None,
             "atr": float(r["atr"]) if r["atr"] else None,
-            "status": r["status"],
-            "pnl_pct": float(r["pnl_pct"]) if r["pnl_pct"] is not None else None,
+            "status": stored_status,
+            "pnl_pct": pnl_pct,
+            "current_close": current_close,
         })
     return list(batches.values())
 
