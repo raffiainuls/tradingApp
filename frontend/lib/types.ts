@@ -87,7 +87,7 @@ export interface WatchlistItem {
 export interface ScreenerPreset { key: string; label: string; params: Record<string, any>; }
 
 export interface AiPick {
-  id: number; symbol: string; sector: string | null; verdict: string; score: number;
+  id: number; symbol: string; name?: string | null; sector: string | null; verdict: string; score: number;
   rsi: number | null; macd_hist: number | null; adx: number | null; atr: number | null;
   close_price: number; entry_price: number; target_price: number; cutloss_price: number;
   reasoning: string | null; batch_at: string;

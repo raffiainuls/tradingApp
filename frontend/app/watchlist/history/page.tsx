@@ -92,20 +92,61 @@ function PickCard({ pick }: { pick: AiPick }) {
   const status = statusOf(pick); const pnl = pnlOf(pick, status);
   const isTarget = status.startsWith("Hit TP");
   const tone = isTarget ? "text-up border-up/40 bg-up/10" : status === "Cut Loss" ? "text-down border-down/40 bg-down/10" : "text-dim border-border bg-panel2";
-  const pnlLabel = isTarget ? "Max Profit Reached" : status === "Cut Loss" ? "Cutloss Triggered" : "Unrealized P/L";
+  const pnlLabel = isTarget ? "Max Profit" : status === "Cut Loss" ? "Cut Loss" : "Unrealized P/L";
   const currentClose = pick.current_close ?? pick.current_price;
-  const levels = [
-    ["Buy Area", pick.buy_area_low != null && pick.buy_area_high != null ? `${fmtPrice(pick.buy_area_low)}–${fmtPrice(pick.buy_area_high)}` : fmtPrice(pick.entry_price)],
-    ["TP1", fmtPrice(pick.tp1 ?? pick.target_price)], ["TP2", pick.tp2 != null ? fmtPrice(pick.tp2) : "–"], ["TP3", pick.tp3 != null ? fmtPrice(pick.tp3) : "–"],
-    ["Cutloss", pick.cutloss_area_low != null && pick.cutloss_area_high != null ? `${fmtPrice(pick.cutloss_area_low)}–${fmtPrice(pick.cutloss_area_high)}` : fmtPrice(pick.cutloss_price)],
+
+  const buyArea = pick.buy_area_low != null && pick.buy_area_high != null
+    ? `${fmtPrice(pick.buy_area_low)}–${fmtPrice(pick.buy_area_high)}`
+    : fmtPrice(pick.entry_price);
+  const tp1Val = fmtPrice(pick.tp1 ?? pick.target_price);
+  const tp2Val = pick.tp2 != null ? fmtPrice(pick.tp2) : null;
+  const tp3Val = pick.tp3 != null ? fmtPrice(pick.tp3) : null;
+  const cutlossVal = pick.cutloss_area_low != null && pick.cutloss_area_high != null
+    ? `${fmtPrice(pick.cutloss_area_low)}–${fmtPrice(pick.cutloss_area_high)}`
+    : fmtPrice(pick.cutloss_price);
+
+  const levels: [string, string][] = [
+    ...(buyArea !== "–" ? [["Entry", buyArea] as [string, string]] : []),
+    ...(tp1Val !== "–" ? [["Target", tp1Val] as [string, string]] : []),
+    ...(tp2Val ? [["TP2", tp2Val] as [string, string]] : []),
+    ...(tp3Val ? [["TP3", tp3Val] as [string, string]] : []),
+    ...(cutlossVal !== "–" ? [["Cutloss", cutlossVal] as [string, string]] : []),
   ];
+
+  const hasPriceData = levels.length > 0;
+  const nowLabel = currentClose != null ? fmtPrice(currentClose) : null;
+
   return <article className="card overflow-hidden">
     <div className="flex items-start justify-between gap-3 p-4">
-      <div><Link href={`/analyst?symbol=${pick.symbol}`} className="font-bold hover:text-accent">{pick.symbol}</Link><p className="mt-0.5 text-[11px] text-dim">Entry {fmtPrice(pick.entry_price)} · Kini {currentClose != null ? fmtPrice(currentClose) : "–"}</p></div>
-      <div className="text-right"><span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-semibold ${tone}`}>{status}</span><p className={`mt-1 font-mono text-sm font-bold ${pnl == null ? "text-dim" : status === "Still Open" ? (pnl >= 0 ? "text-dim" : "text-warn") : pnl >= 0 ? "text-up" : "text-down"}`}>{pnl == null ? "P&L –" : fmtPct(pnl)}</p><p className="mt-0.5 text-[9px] text-dim">{pnlLabel}</p></div>
+      <div>
+        <Link href={`/analyst?symbol=${pick.symbol}`} className="font-bold hover:text-accent">{pick.symbol}</Link>
+        {pick.name && <p className="mt-0.5 text-[10px] text-dim truncate max-w-[140px]">{pick.name}</p>}
+        {(buyArea !== "–" || nowLabel) && (
+          <p className="mt-0.5 text-[11px] text-dim">
+            {buyArea !== "–" && <>Entry {buyArea}</>}
+            {nowLabel && <> · Kini {nowLabel}</>}
+          </p>
+        )}
+      </div>
+      <div className="text-right shrink-0">
+        <span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-semibold ${tone}`}>{status}</span>
+        {pnl != null && (
+          <>
+            <p className={`mt-1 font-mono text-sm font-bold ${pnl >= 0 ? "text-up" : "text-down"}`}>{fmtPct(pnl)}</p>
+            <p className="mt-0.5 text-[9px] text-dim">{pnlLabel}</p>
+          </>
+        )}
+      </div>
     </div>
-    <dl className="grid grid-cols-2 gap-px border-t border-border bg-border sm:grid-cols-5">
-      {levels.map(([label, value]) => <div key={label} className="bg-panel px-2 py-2"><dt className="text-[9px] uppercase tracking-wide text-dim">{label}</dt><dd className="mt-0.5 whitespace-nowrap font-mono text-[11px]">{value}</dd></div>)}
-    </dl>
+    {hasPriceData && (
+      <dl className={`grid gap-px border-t border-border bg-border grid-cols-${Math.min(levels.length, 5)}`}>
+        {levels.map(([label, value]) => (
+          <div key={label} className="bg-panel px-2 py-2">
+            <dt className="text-[9px] uppercase tracking-wide text-dim">{label}</dt>
+            <dd className="mt-0.5 whitespace-nowrap font-mono text-[11px]">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    )}
   </article>;
 }
